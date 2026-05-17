@@ -1,4 +1,4 @@
-name: "General AI Multi-Language Scanner"
+ame: "General AI Multi-Language Scanner"
 
 on:
   workflow_dispatch: 
@@ -123,7 +123,6 @@ jobs:
                   parts = name_root.split('--')
                   if len(parts) < 4: continue
                   
-                  # FIX: Access individual elements of the 'parts' list before calling string operations
                   repo_path = parts[0].replace('_SLASH_', '/')
                   pr_num = parts[1]
                   lang = parts[2]
@@ -131,12 +130,19 @@ jobs:
                   
                   with open(f) as s: data = json.load(s)
                   runs = data.get('runs', [])
-                  res = runs[0].get('results', []) if runs else []
+                  res = []
+                  
+                  # FIXED: Aggregate all results across all sub-runs
+                  for run in runs:
+                      if isinstance(run, dict):
+                          res.extend(run.get('results', []))
                   
                   local_cwe_map = {}
                   try:
-                      if runs:
-                          tool = runs[0].get('tool', {})
+                      # FIXED: Loop through all sub-runs to build global tool rules mappings
+                      for run in runs:
+                          if not isinstance(run, dict): continue
+                          tool = run.get('tool', {})
                           all_rules = []
                           all_rules.extend(tool.get('driver', {}).get('rules', []))
                           for ext in tool.get('extensions', []):
@@ -162,8 +168,15 @@ jobs:
                   pr_cwes = set()
                   for r in res:
                       cwe_id = local_cwe_map.get(r.get('ruleId'), 'Unclassified')
-                      cwe_tracker[cwe_id] = cwe_tracker.get(cwe_id, 0) + 1
                       if cwe_id != 'Unclassified':
+                          # FIXED: Enforce 3-digit standard padding (CWE-20 -> CWE-020)
+                          try:
+                              cwe_num_str = cwe_id.split('-')[-1]
+                              if len(cwe_num_str) < 3:
+                                  cwe_id = f'CWE-{cwe_num_str.zfill(3)}'
+                          except: pass
+                          
+                          cwe_tracker[cwe_id] = cwe_tracker.get(cwe_id, 0) + 1
                           pr_cwes.add(cwe_id)
                   
                   cwe_display = ', '.join(sorted(list(pr_cwes))) if pr_cwes else 'None'
