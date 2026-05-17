@@ -1,215 +1,88 @@
-name: "General AI Multi-Language Scanner"
+import json, os, sys
 
-on:
-  workflow_dispatch: 
+def main():
+    sarif_path = "results.sarif"
+    if not os.path.exists(sarif_path):
+        return
+        
+    try:
+        with open(sarif_path, 'r') as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, FileNotFoundError):
+        return
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    runs = data.get('runs', [])
+    if not runs:
+        return
+        
+    # --- BULLETPROOF CWE EXTRACTOR ---
+    cwe_map = {}
+    try:
+        all_rules = []
+        for run in runs:
+            if not isinstance(run, dict): continue
+            tool = run.get('tool', {})
+            all_rules.extend(tool.get('driver', {}).get('rules', []))
+            for ext in tool.get('extensions', []):
+                all_rules.extend(ext.get('rules', []))
 
-permissions:
-  contents: read
-  security-events: write
-  actions: read
+        for rule in all_rules:
+            rule_id = rule.get('id')
+            if not rule_id: continue
+            
+            tags = rule.get('properties', {}).get('tags', [])
+            if rule_id not in cwe_map:
+                cwe_map[rule_id] = set()
+            for tag in tags:
+                if 'cwe-' in tag.lower():
+                    cwe_num = tag.lower().split('cwe-')[-1]
+                    if len(cwe_num) < 3:
+                        cwe_num = cwe_num.zfill(3)
+                    cwe_map[rule_id].add(f"CWE-{cwe_num}".upper())
+    except Exception as e:
+        print(f"Metadata mapping warning: {e}")
 
-jobs:
-  discover:
-    name: Find AI PRs
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.detect.outputs.matrix_data }}
-    steps:
-      - uses: actions/checkout@v5
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      - name: Discover Scan Matrix
-        id: detect
-        env:
-          GH_TOKEN: ${{ secrets.GLOBAL_SCAN_PAT }}
-        run: |
-          pip install pandas
-          python scripts/ai-scanner.py
+    # --- AGGREGATE RESULTS & DEDUPLICATE LINES ---
+    consolidated_results = []
+    seen_findings = set()
 
-  analyze:
-    name: Scan ${{ matrix.repo_name }} (#${{ matrix.pr_num }}) - [${{ matrix.language }}]
-    needs: discover
-    if: ${{ needs.discover.outputs.matrix != '' && fromJson(needs.discover.outputs.matrix).include != null }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      CODEQL_RAM: 12000
-    strategy:
-      fail-fast: false
-      max-parallel: 10
-      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+    for run in runs:
+        if not isinstance(run, dict): continue
+        for res in run.get('results', []):
+            rule_id = res.get('ruleId', 'Unknown')
+            locs = res.get('locations', [{}])[0].get('physicalLocation', {})
+            path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
+            line = locs.get('region', {}).get('startLine', '?')
+            
+            # Create a unique fingerprint for this specific issue line instance
+            fingerprint = f"{rule_id}::{path}::{line}"
+            if fingerprint not in seen_findings:
+                seen_findings.add(fingerprint)
+                consolidated_results.append(res)
+
+    summary_md = f"\n### 🛡️ Analysis Details: {len(consolidated_results)} Distinct Issues Found\n"
     
-    steps:
-      - uses: actions/checkout@v5
-      - name: Prepare Workspace and Checkout PR
-        id: pr_checkout
-        env:
-          GH_TOKEN: ${{ secrets.GLOBAL_SCAN_PAT }}
-          GIT_LFS_SKIP_SMUDGE: 1
-        run: |
-          git config --global filter.lfs.smudge "git-lfs smudge --skip -- %f"
-          git config --global filter.lfs.process "git-lfs filter-process --skip"
-          mkdir -p /tmp/scripts && cp scripts/* /tmp/scripts/
-          rm -rf ./*
-          gh pr checkout ${{ matrix.pr_num }} --repo ${{ matrix.repo_name }}
-          mkdir -p scripts && cp /tmp/scripts/* scripts/
+    if consolidated_results:
+        summary_md += "| Severity | CWE | Vulnerability | File:Line | Description |\n| :--- | :--- | :--- | :--- | :--- |\n"
+        icons = {"error": "🔴 High", "warning": "🟡 Medium", "note": "🔵 Low"}
+        
+        for res in consolidated_results:
+            locs = res.get('locations', [{}])[0].get('physicalLocation', {})
+            path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
+            line = locs.get('region', {}).get('startLine', '?')
+            level = res.get('level', 'warning')
+            rule_id = res.get('ruleId', 'Unknown')
+            
+            # Gather and format accumulated CWEs for this rule
+            cwes_set = cwe_map.get(rule_id, set())
+            cwe_display = ", ".join(sorted(list(cwes_set))) if cwes_set else "N/A"
+            
+            msg = res.get('message', {}).get('text', 'No description').split('\n')[0]
+            summary_md += f"| {icons.get(level, '🟡')} | **{cwe_display}** | `{rule_id}` | `{path}:{line}` | {msg} |\n"
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: none
-          db-location: ${{ runner.temp }}/codeql_db
-          trap-caching: false
-          queries: security-extended
+    summary_file = os.environ.get('GITHUB_STEP_SUMMARY', 'summary.md')
+    with open(summary_file, 'a') as f:
+        f.write(summary_md)
 
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        continue-on-error: true
-        with:
-          category: "/pr:${{ matrix.category_name }}"
-          output: sarif-results
-          upload: false 
-          wait-for-processing: false 
-
-      - name: Create Summary
-        if: always()
-        run: |
-          if [ -d "sarif-results" ]; then
-            cp sarif-results/*.sarif ./results.sarif 2>/dev/null || true
-            SAFE_REPO=$(echo "${{ matrix.repo_name }}" | sed 's/\//_SLASH_/g')
-            cp sarif-results/*.sarif "./${SAFE_REPO}--${{ matrix.pr_num }}--${{ matrix.language }}--${{ matrix.agent_name }}.sarif" 2>/dev/null || true
-            python scripts/parse-results.py
-          fi
-
-      - name: Save Artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sarif-${{ matrix.category_name }}
-          path: "*.sarif"
-
-  report:
-    name: Consolidate Final Report
-    needs: analyze
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: sarif-*
-          path: all-results
-          merge-multiple: true
-      - name: Generate Consolidated Summary
-        run: |
-          python3 -c "
-          import json, glob, os
-          all_files = sorted(glob.glob('all-results/**/*.sarif', recursive=True))
-          table_rows = []
-          total_scanned = 0
-          vulnerable_count = 0
-          cwe_tracker = {}
-
-          for f in all_files:
-              fname = os.path.basename(f)
-              if fname == 'results.sarif' or '--' not in fname: continue
-              try:
-                  name_root = fname.replace('.sarif', '')
-                  parts = name_root.split('--')
-                  if len(parts) < 4: continue
-                  
-                  repo_path = parts[0].replace('_SLASH_', '/')
-                  pr_num = parts[1]
-                  lang = parts[2]
-                  agent = parts[3].replace('_', ' ')
-                  
-                  with open(f) as s: data = json.load(s)
-                  runs = data.get('runs', [])
-                  res = []
-                  
-                  seen_findings = set()
-                  for run in runs:
-                      if isinstance(run, dict):
-                          for result in run.get('results', []):
-                              rule_id = result.get('ruleId', 'Unknown')
-                              locs = result.get('locations', [{}])[0].get('physicalLocation', {}) if isinstance(result.get('locations'), list) and len(result.get('locations')) > 0 else result.get('locations', {}).get('physicalLocation', {})
-                              path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
-                              line = locs.get('region', {}).get('startLine', '?')
-                              
-                              fingerprint = f'{rule_id}::{path}::{line}'
-                              if fingerprint not in seen_findings:
-                                  seen_findings.add(fingerprint)
-                                  res.append(result)
-                  
-                  local_cwe_map = {}
-                  try:
-                      for run in runs:
-                          if not isinstance(run, dict): continue
-                          tool = run.get('tool', {})
-                          all_rules = []
-                          all_rules.extend(tool.get('driver', {}).get('rules', []))
-                          for ext in tool.get('extensions', []):
-                              all_rules.extend(ext.get('rules', []))
-                              
-                          for rule in all_rules:
-                              r_id = rule.get('id')
-                              tags = rule.get('properties', {}).get('tags', [])
-                              if r_id not in local_cwe_map:
-                                  local_cwe_map[r_id] = set()
-                              for t in tags:
-                                  if 'cwe-' in t.lower():
-                                      c_num = t.lower().split('cwe-')[-1]
-                                      if len(c_num) < 3:
-                                          c_num = c_num.zfill(3)
-                                      local_cwe_map[r_id].add(f'CWE-{c_num}'.upper())
-                  except Exception as ex: 
-                      print(f'Metadata extract warning for {fname}: {ex}')
-
-                  total_scanned += 1
-                  if len(res) > 0: vulnerable_count += 1
-                  
-                  h = sum(1 for r in res if r.get('level') == 'error')
-                  m = sum(1 for r in res if r.get('level', 'warning') == 'warning')
-                  l = sum(1 for r in res if r.get('level') == 'note')
-                  
-                  pr_cwes = set()
-                  for r in res:
-                      cwes_for_rule = local_cwe_map.get(r.get('ruleId'), set())
-                      if cwes_for_rule:
-                          for cwe_id in cwes_for_rule:
-                              cwe_tracker[cwe_id] = cwe_tracker.get(cwe_id, 0) + 1
-                              pr_cwes.add(cwe_id)
-                  
-                  cwe_display = ', '.join(sorted(list(pr_cwes))) if pr_cwes else 'None'
-                  u_files = len(set(loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri') for r in res for loc in r.get('locations', []) if isinstance(loc, dict) and loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri')))
-                  
-                  full_url = '/'.join(['https://github.com', repo_path, 'pull', pr_num])
-                  link_md = f'[#{pr_num}]({full_url})'
-                  
-                  table_rows.append(f'| {repo_path} | {link_md} | {agent} | {lang} | **{cwe_display}** | {h} | {m} | {l} | {len(res)} ({u_files}) |')
-              except Exception as e:
-                  print(f'Error processing {fname}: {e}')
-
-          print('# 📊 Global Analysis Summary')
-          print('\n### Executive Summary')
-          print(f'- **Total PRs Scanned:** {total_scanned}')
-          print(f'- **PRs with Issues:** {vulnerable_count} ⚠️')
-          print(f'- **Clean PRs:** {total_scanned - vulnerable_count} ✅')
-          
-          # UPDATED TITLE DISPLAY
-          print('\n### 🎯 Discovered AI Weaknesses (Top 5 CWE Frequency)')
-          if cwe_tracker:
-              for cwe, count in sorted(cwe_tracker.items(), key=lambda item: item[1], reverse=True)[:5]:
-                  print(f'- **{cwe}**: Found {count} time(s)')
-          else:
-              print('- No distinct CWE records mapped.')
-
-          print('\n| Repository | PR | AI Tool | Lang | CWE Discovered | 🔴 H | 🟡 M | 🔵 L | Total (Files) |')
-          print('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
-          for r in sorted(table_rows): print(r)
-          " >> $GITHUB_STEP_SUMMARY
+if __name__ == "__main__":
+    main()
