@@ -14,53 +14,69 @@ def main():
     runs = data.get('runs', [])
     if not runs:
         return
-    run = runs[0]
         
-    # --- FIXED BULLETPROOF CWE EXTRACTOR ---
+    # --- BULLETPROOF CWE EXTRACTOR ---
     cwe_map = {}
     try:
-        # Collect all possible rule locations (Driver rules + Extension rules)
         all_rules = []
-        tool = run.get('tool', {})
-        
-        # 1. Main Driver Rules
-        all_rules.extend(tool.get('driver', {}).get('rules', []))
-        
-        # 2. Extension Pack Rules (Where matrix metadata usually moves them)
-        for ext in tool.get('extensions', []):
-            all_rules.extend(ext.get('rules', []))
+        for run in runs:
+            if not isinstance(run, dict): continue
+            tool = run.get('tool', {})
+            all_rules.extend(tool.get('driver', {}).get('rules', []))
+            for ext in tool.get('extensions', []):
+                all_rules.extend(ext.get('rules', []))
 
-        # Map each ruleId to its respective CWE text strings
         for rule in all_rules:
             rule_id = rule.get('id')
             if not rule_id: continue
             
             tags = rule.get('properties', {}).get('tags', [])
-            cwes = []
+            if rule_id not in cwe_map:
+                cwe_map[rule_id] = set()
             for tag in tags:
                 if 'cwe-' in tag.lower():
-                    # Parse tag variations e.g., 'external/cwe/cwe-79'
                     cwe_num = tag.lower().split('cwe-')[-1]
-                    cwes.append(f"CWE-{cwe_num}")
-            if cwes:
-                cwe_map[rule_id] = ", ".join(sorted(list(set(cwes)))).upper()
+                    if len(cwe_num) < 3:
+                        cwe_num = cwe_num.zfill(3)
+                    cwe_map[rule_id].add(f"CWE-{cwe_num}".upper())
     except Exception as e:
         print(f"Metadata mapping warning: {e}")
 
-    results = run.get('results', [])
-    summary_md = f"\n### 🛡️ Analysis Details: {len(results)} Issues Found\n"
+    # --- AGGREGATE RESULTS & DEDUPLICATE LINES ---
+    consolidated_results = []
+    seen_findings = set()
+
+    for run in runs:
+        if not isinstance(run, dict): continue
+        for res in run.get('results', []):
+            rule_id = res.get('ruleId', 'Unknown')
+            locs = res.get('locations', [{}])[0].get('physicalLocation', {})
+            path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
+            line = locs.get('region', {}).get('startLine', '?')
+            
+            # Create a unique fingerprint for this specific issue line instance
+            fingerprint = f"{rule_id}::{path}::{line}"
+            if fingerprint not in seen_findings:
+                seen_findings.add(fingerprint)
+                consolidated_results.append(res)
+
+    summary_md = f"\n### 🛡️ Analysis Details: {len(consolidated_results)} Distinct Issues Found\n"
     
-    if results:
+    if consolidated_results:
         summary_md += "| Severity | CWE | Vulnerability | File:Line | Description |\n| :--- | :--- | :--- | :--- | :--- |\n"
         icons = {"error": "🔴 High", "warning": "🟡 Medium", "note": "🔵 Low"}
-        for res in results:
+        
+        for res in consolidated_results:
             locs = res.get('locations', [{}])[0].get('physicalLocation', {})
             path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
             line = locs.get('region', {}).get('startLine', '?')
             level = res.get('level', 'warning')
             rule_id = res.get('ruleId', 'Unknown')
             
-            cwe_display = cwe_map.get(rule_id, "N/A")
+            # Gather and format accumulated CWEs for this rule
+            cwes_set = cwe_map.get(rule_id, set())
+            cwe_display = ", ".join(sorted(list(cwes_set))) if cwes_set else "N/A"
+            
             msg = res.get('message', {}).get('text', 'No description').split('\n')[0]
             summary_md += f"| {icons.get(level, '🟡')} | **{cwe_display}** | `{rule_id}` | `{path}:{line}` | {msg} |\n"
 
