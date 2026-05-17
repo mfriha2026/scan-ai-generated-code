@@ -123,20 +123,19 @@ jobs:
                   parts = name_root.split('--')
                   if len(parts) < 4: continue
                   
-                  repo_path = parts[0].replace('_SLASH_', '/')
-                  pr_num = parts[1]
-                  lang = parts[2]
-                  agent = parts[3].replace('_', ' ')
+                  repo_path = parts.replace('_SLASH_', '/')
+                  pr_num = parts
+                  lang = parts
+                  agent = parts.replace('_', ' ')
                   
                   with open(f) as s: data = json.load(s)
                   runs = data.get('runs', [])
-                  res = runs[0].get('results', []) if runs else []
+                  res = runs.get('results', []) if runs else []
                   
-                  # FIXED: Safely extracting metadata from the first run dictionary item instead of the outer list
                   local_cwe_map = {}
                   try:
                       if runs:
-                          tool = runs[0].get('tool', {})
+                          tool = runs.get('tool', {})
                           all_rules = []
                           all_rules.extend(tool.get('driver', {}).get('rules', []))
                           for ext in tool.get('extensions', []):
@@ -159,16 +158,23 @@ jobs:
                   m = sum(1 for r in res if r.get('level', 'warning') == 'warning')
                   l = sum(1 for r in res if r.get('level') == 'note')
                   
+                  # Extract and sort unique CWEs found strictly inside this PR
+                  pr_cwes = set()
                   for r in res:
                       cwe_id = local_cwe_map.get(r.get('ruleId'), 'Unclassified')
                       cwe_tracker[cwe_id] = cwe_tracker.get(cwe_id, 0) + 1
+                      if cwe_id != 'Unclassified':
+                          pr_cwes.add(cwe_id)
+                  
+                  cwe_display = ', '.join(sorted(list(pr_cwes))) if pr_cwes else 'None'
 
                   u_files = len(set(loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri') for r in res for loc in r.get('locations', [])))
                   
                   full_url = '/'.join(['https://github.com', repo_path, 'pull', pr_num])
                   link_md = f'[#{pr_num}]({full_url})'
                   
-                  table_rows.append(f'| {repo_path} | {link_md} | {agent} | {lang} | {h} | {m} | {l} | {len(res)} ({u_files}) |')
+                  # ADDED: New Column placement for 'cwe_display'
+                  table_rows.append(f'| {repo_path} | {link_md} | {agent} | {lang} | **{cwe_display}** | {h} | {m} | {l} | {len(res)} ({u_files}) |')
               except Exception as e:
                   print(f'Error processing {fname}: {e}')
 
@@ -180,12 +186,12 @@ jobs:
           
           print('\n### 🎯 Discovered AI Weaknesses (CWE Frequency)')
           if cwe_tracker:
-              for cwe, count in sorted(cwe_tracker.items(), key=lambda item: item[1], reverse=True)[:5]:
+              for cwe, count in sorted(cwe_tracker.items(), key=lambda item: item, reverse=True)[:5]:
                   print(f'- **{cwe}**: Found {count} time(s)')
           else:
               print('- No distinct CWE records mapped.')
 
-          print('\n| Repository | PR | AI Tool | Lang | 🔴 H | 🟡 M | 🔵 L | Total (Files) |')
-          print('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
+          print('\n| Repository | PR | AI Tool | Lang | CWE Discovered | 🔴 H | 🟡 M | 🔵 L | Total (Files) |')
+          print('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
           for r in sorted(table_rows): print(r)
           " >> $GITHUB_STEP_SUMMARY
