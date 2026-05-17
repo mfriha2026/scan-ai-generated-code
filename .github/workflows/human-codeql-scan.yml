@@ -172,9 +172,22 @@ jobs:
                   total_scanned += 1
                   if len(res) > 0: vulnerable_count += 1
                   
-                  h = sum(1 for r in res if r.get('level') == 'error')
-                  m = sum(1 for r in res if r.get('level', 'warning') == 'warning')
-                  l = sum(1 for r in res if r.get('level') == 'note')
+                  # FIXED SMART SEVERITY MAPPING ENGINE
+                  h, m, l = 0, 0, 0
+                  CRITICAL_CWES = ['CWE-078', 'CWE-088', 'CWE-094', 'CWE-502']
+                  
+                  for r in res:
+                      r_id = r.get('ruleId', '')
+                      level = r.get('level', 'warning')
+                      cwes_for_rule = local_cwe_map.get(r_id, set())
+                      is_critical_cwe = any(c in CRITICAL_CWES for c in cwes_for_rule)
+                      
+                      if level == 'error' or is_critical_cwe:
+                          h += 1
+                      elif level == 'warning':
+                          m += 1
+                      else:
+                          l += 1
                   
                   pr_cwes = set()
                   for r in res:
@@ -186,7 +199,6 @@ jobs:
                   
                   cwe_display = ', '.join(sorted(list(pr_cwes))) if pr_cwes else 'None'
                   
-                  # FIXED ACCUMULATOR: Explicit multi-line safe looping loop
                   unique_files = set()
                   for r in res:
                       locs_arr = r.get('locations', [])
@@ -208,7 +220,7 @@ jobs:
           print('\n### Executive Summary')
           print(f'- **Total Human PRs Scanned:** {total_scanned}')
           print(f'- **PRs with Issues:** {vulnerable_count} ⚠️')
-          print(f'- **Clean Human PRs:** {total_scanned - vulnerable_count} ✅')
+          print(f'- **Clean PRs:** {total_scanned - vulnerable_count} ✅')
           
           print('\n### 🎯 Discovered Human Weaknesses (Top 5 CWE Frequency)')
           if cwe_tracker:
