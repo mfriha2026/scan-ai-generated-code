@@ -123,32 +123,34 @@ jobs:
                   parts = name_root.split('--')
                   if len(parts) < 4: continue
                   
-                  repo_path = parts.replace('_SLASH_', '/')
-                  pr_num = parts
-                  lang = parts
-                  agent = parts.replace('_', ' ')
+                  repo_path = parts[0].replace('_SLASH_', '/')
+                  pr_num = parts[1]
+                  lang = parts[2]
+                  agent = parts[3].replace('_', ' ')
                   
                   with open(f) as s: data = json.load(s)
-                  runs = data.get('runs', [{}])
-                  res = runs.get('results', []) if runs else []
+                  runs = data.get('runs', [])
+                  res = runs[0].get('results', []) if runs else []
                   
-                  # FIXED GLOBAL EXPANDED CWE TRACKER
+                  # FIXED: Safely extracting metadata from the first run dictionary item instead of the outer list
                   local_cwe_map = {}
                   try:
-                      tool = runs.get('tool', {})
-                      all_rules = []
-                      all_rules.extend(tool.get('driver', {}).get('rules', []))
-                      for ext in tool.get('extensions', []):
-                          all_rules.extend(ext.get('rules', []))
-                          
-                      for rule in all_rules:
-                          r_id = rule.get('id')
-                          tags = rule.get('properties', {}).get('tags', [])
-                          for t in tags:
-                              if 'cwe-' in t.lower():
-                                  c_num = t.lower().split('cwe-')[-1]
-                                  local_cwe_map[r_id] = f'CWE-{c_num}'.upper()
-                  except: pass
+                      if runs:
+                          tool = runs[0].get('tool', {})
+                          all_rules = []
+                          all_rules.extend(tool.get('driver', {}).get('rules', []))
+                          for ext in tool.get('extensions', []):
+                              all_rules.extend(ext.get('rules', []))
+                              
+                          for rule in all_rules:
+                              r_id = rule.get('id')
+                              tags = rule.get('properties', {}).get('tags', [])
+                              for t in tags:
+                                  if 'cwe-' in t.lower():
+                                      c_num = t.lower().split('cwe-')[-1]
+                                      local_cwe_map[r_id] = f'CWE-{c_num}'.upper()
+                  except Exception as ex: 
+                      print(f'Metadata extract warning for {fname}: {ex}')
 
                   total_scanned += 1
                   if len(res) > 0: vulnerable_count += 1
@@ -178,8 +180,7 @@ jobs:
           
           print('\n### 🎯 Discovered AI Weaknesses (CWE Frequency)')
           if cwe_tracker:
-              # Sort using the count value of the dictionary item
-              for cwe, count in sorted(cwe_tracker.items(), key=lambda item: item, reverse=True)[:5]:
+              for cwe, count in sorted(cwe_tracker.items(), key=lambda item: item[1], reverse=True)[:5]:
                   print(f'- **{cwe}**: Found {count} time(s)')
           else:
               print('- No distinct CWE records mapped.')
