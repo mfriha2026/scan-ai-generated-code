@@ -123,7 +123,6 @@ jobs:
                   parts = name_root.split('--')
                   if len(parts) < 4: continue
                   
-                  # EXPLICIT FIX: Targets string index 0 from the list splits directly
                   repo_path = parts[0].replace('_SLASH_', '/')
                   pr_num = parts[1]
                   lang = parts[2]
@@ -138,8 +137,7 @@ jobs:
                       if isinstance(run, dict):
                           for result in run.get('results', []):
                               rule_id = result.get('ruleId', 'Unknown')
-                              locs = result.get('locations', [{}])[0].get('physicalLocation', {}) if isinstance(result.get('locations'), list) and len(result.get('locations')) > 0 else result.get('locations', [{}])[0].get('physicalLocation', {}) if isinstance(result.get('locations'), list) else result.get('locations', {}).get('physicalLocation', {})
-                              if isinstance(locs, list): locs = locs[0] if len(locs) > 0 else {}
+                              locs = result.get('locations', [{}])[0].get('physicalLocation', {}) if isinstance(result.get('locations'), list) and len(result.get('locations')) > 0 else result.get('locations', {}).get('physicalLocation', {})
                               path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
                               line = locs.get('region', {}).get('startLine', '?')
                               
@@ -203,7 +201,8 @@ jobs:
           print(f'- **PRs with Issues:** {vulnerable_count} ⚠️')
           print(f'- **Clean PRs:** {total_scanned - vulnerable_count} ✅')
           
-          print('\n### 🎯 Discovered AI Weaknesses (CWE Frequency)')
+          # UPDATED TITLE DISPLAY
+          print('\n### 🎯 Discovered AI Weaknesses (Top 5 CWE Frequency)')
           if cwe_tracker:
               for cwe, count in sorted(cwe_tracker.items(), key=lambda item: item[1], reverse=True)[:5]:
                   print(f'- **{cwe}**: Found {count} time(s)')
