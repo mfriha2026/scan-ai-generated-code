@@ -123,20 +123,30 @@ jobs:
                   parts = name_root.split('--')
                   if len(parts) < 4: continue
                   
-                  repo_path = parts[0].replace('_SLASH_', '/')
-                  pr_num = parts[1]
-                  lang = parts[2]
-                  agent = parts[3].replace('_', ' ')
+                  repo_path = parts.replace('_SLASH_', '/')
+                  pr_num = parts
+                  lang = parts
+                  agent = parts.replace('_', ' ')
                   
                   with open(f) as s: data = json.load(s)
                   runs = data.get('runs', [])
                   res = []
                   
+                  # FINGERPRINT DEDUPLICATOR: Stops cross-pass line item duplicates
+                  seen_findings = set()
                   for run in runs:
                       if isinstance(run, dict):
-                          res.extend(run.get('results', []))
+                          for result in run.get('results', []):
+                              rule_id = result.get('ruleId', 'Unknown')
+                              locs = result.get('locations', [{}])[0].get('physicalLocation', {})
+                              path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
+                              line = locs.get('region', {}).get('startLine', '?')
+                              
+                              fingerprint = f'{rule_id}::{path}::{line}'
+                              if fingerprint not in seen_findings:
+                                  seen_findings.add(fingerprint)
+                                  res.append(result)
                   
-                  # FIXED ACCUMULATOR: Maps rule IDs to a SET of unique CWEs across all query blocks
                   local_cwe_map = {}
                   try:
                       for run in runs:
@@ -155,7 +165,6 @@ jobs:
                               for t in tags:
                                   if 'cwe-' in t.lower():
                                       c_num = t.lower().split('cwe-')[-1]
-                                      # Standard 3-digit padding (e.g. CWE-20 -> CWE-020)
                                       if len(c_num) < 3:
                                           c_num = c_num.zfill(3)
                                       local_cwe_map[r_id].add(f'CWE-{c_num}'.upper())
