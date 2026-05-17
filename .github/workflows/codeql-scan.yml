@@ -113,6 +113,7 @@ jobs:
           table_rows = []
           total_scanned = 0
           vulnerable_count = 0
+          cwe_tracker = {}
 
           for f in all_files:
               fname = os.path.basename(f)
@@ -122,15 +123,28 @@ jobs:
                   parts = name_root.split('--')
                   if len(parts) < 4: continue
                   
-                  repo_path = parts[0].replace('_SLASH_', '/')
-                  pr_num = parts[1]
-                  lang = parts[2]
-                  agent = parts[3].replace('_', ' ')
+                  repo_path = parts.replace('_SLASH_', '/')
+                  pr_num = parts
+                  lang = parts
+                  agent = parts.replace('_', ' ')
                   
                   with open(f) as s: data = json.load(s)
                   runs = data.get('runs', [{}])
-                  res = runs[0].get('results', []) if runs else []
+                  res = runs.get('results', []) if runs else []
                   
+                  # Map rule IDs to CWE tags out of the internal metadata array
+                  local_cwe_map = {}
+                  try:
+                      rules = runs.get('tool', {}).get('driver', {}).get('rules', [])
+                      for rule in rules:
+                          r_id = rule.get('id')
+                          tags = rule.get('properties', {}).get('tags', [])
+                          for t in tags:
+                              if 'cwe-' in t.lower():
+                                  c_num = t.lower().split('cwe-')
+                                  local_cwe_map[r_id] = f'CWE-{c_num}'.upper()
+                  except: pass
+
                   total_scanned += 1
                   if len(res) > 0: vulnerable_count += 1
                   
@@ -138,7 +152,11 @@ jobs:
                   m = sum(1 for r in res if r.get('level', 'warning') == 'warning')
                   l = sum(1 for r in res if r.get('level') == 'note')
                   
-                  # FILE COUNT LOGIC
+                  # Increment global frequency trackers
+                  for r in res:
+                      cwe_id = local_cwe_map.get(r.get('ruleId'), 'Unclassified')
+                      cwe_tracker[cwe_id] = cwe_tracker.get(cwe_id, 0) + 1
+
                   u_files = len(set(loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri') for r in res for loc in r.get('locations', [])))
                   
                   full_url = '/'.join(['https://github.com', repo_path, 'pull', pr_num])
@@ -149,10 +167,19 @@ jobs:
                   print(f'Error processing {fname}: {e}')
 
           print('# 📊 Global Analysis Summary')
-          print(f'\n### Executive Summary')
+          print('\n### Executive Summary')
           print(f'- **Total PRs Scanned:** {total_scanned}')
           print(f'- **PRs with Issues:** {vulnerable_count} ⚠️')
           print(f'- **Clean PRs:** {total_scanned - vulnerable_count} ✅')
+          
+          print('\n### 🎯 Discovered AI Weaknesses (CWE Frequency)')
+          if cwe_tracker:
+              # Take top 5 CWEs sorted descending by frequency count
+              for cwe, count in sorted(cwe_tracker.items(), key=lambda item: item, reverse=True)[:5]:
+                  print(f'- **{cwe}**: Found {count} time(s)')
+          else:
+              print('- No distinct CWE records mapped.')
+
           print('\n| Repository | PR | AI Tool | Lang | 🔴 H | 🟡 M | 🔵 L | Total (Files) |')
           print('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
           for r in sorted(table_rows): print(r)
