@@ -14,32 +14,43 @@ def main():
     runs = data.get('runs', [])
     if not runs:
         return
+    run = runs[0]
         
-    # --- EXTRACT CWE METADATA FROM SARIF RULES ---
-    # CodeQL stores CWE tags inside the tool rule extensions [1, 2]
+    # --- FIXED BULLETPROOF CWE EXTRACTOR ---
     cwe_map = {}
     try:
-        rules = runs[0].get('tool', {}).get('driver', {}).get('rules', [])
-        for rule in rules:
+        # Collect all possible rule locations (Driver rules + Extension rules)
+        all_rules = []
+        tool = run.get('tool', {})
+        
+        # 1. Main Driver Rules
+        all_rules.extend(tool.get('driver', {}).get('rules', []))
+        
+        # 2. Extension Pack Rules (Where matrix metadata usually moves them)
+        for ext in tool.get('extensions', []):
+            all_rules.extend(ext.get('rules', []))
+
+        # Map each ruleId to its respective CWE text strings
+        for rule in all_rules:
             rule_id = rule.get('id')
+            if not rule_id: continue
+            
             tags = rule.get('properties', {}).get('tags', [])
             cwes = []
             for tag in tags:
-                # CodeQL uses tags like 'external/cwe/cwe-79' or 'security/cwe/cwe-89' [1, 2]
                 if 'cwe-' in tag.lower():
-                    parts = tag.lower().split('cwe-')
-                    if len(parts) > 1:
-                        cwes.append(f"CWE-{parts[1]}")
+                    # Parse tag variations e.g., 'external/cwe/cwe-79'
+                    cwe_num = tag.lower().split('cwe-')[-1]
+                    cwes.append(f"CWE-{cwe_num}")
             if cwes:
                 cwe_map[rule_id] = ", ".join(sorted(list(set(cwes)))).upper()
-    except Exception:
-        pass # Fallback safely if structure differs
+    except Exception as e:
+        print(f"Metadata mapping warning: {e}")
 
-    results = runs[0].get('results', [])
+    results = run.get('results', [])
     summary_md = f"\n### 🛡️ Analysis Details: {len(results)} Issues Found\n"
     
     if results:
-        # Added 'CWE' column to table header
         summary_md += "| Severity | CWE | Vulnerability | File:Line | Description |\n| :--- | :--- | :--- | :--- | :--- |\n"
         icons = {"error": "🔴 High", "warning": "🟡 Medium", "note": "🔵 Low"}
         for res in results:
@@ -49,11 +60,8 @@ def main():
             level = res.get('level', 'warning')
             rule_id = res.get('ruleId', 'Unknown')
             
-            # Lookup CWE tag for this specific rule ID
             cwe_display = cwe_map.get(rule_id, "N/A")
-            
             msg = res.get('message', {}).get('text', 'No description').split('\n')[0]
-            # Formatted table string with the new CWE field
             summary_md += f"| {icons.get(level, '🟡')} | **{cwe_display}** | `{rule_id}` | `{path}:{line}` | {msg} |\n"
 
     summary_file = os.environ.get('GITHUB_STEP_SUMMARY', 'summary.md')
