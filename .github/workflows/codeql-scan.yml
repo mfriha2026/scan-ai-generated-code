@@ -1,4 +1,4 @@
-ame: "General AI Multi-Language Scanner"
+name: "General AI Multi-Language Scanner"
 
 on:
   workflow_dispatch: 
