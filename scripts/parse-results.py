@@ -50,11 +50,10 @@ def main():
         if not isinstance(run, dict): continue
         for res in run.get('results', []):
             rule_id = res.get('ruleId', 'Unknown')
-            locs = res.get('locations', [{}])[0].get('physicalLocation', {})
+            locs = res.get('locations', [{}]).get('physicalLocation', {})
             path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
             line = locs.get('region', {}).get('startLine', '?')
             
-            # Create a unique fingerprint for this specific issue line instance
             fingerprint = f"{rule_id}::{path}::{line}"
             if fingerprint not in seen_findings:
                 seen_findings.add(fingerprint)
@@ -64,21 +63,31 @@ def main():
     
     if consolidated_results:
         summary_md += "| Severity | CWE | Vulnerability | File:Line | Description |\n| :--- | :--- | :--- | :--- | :--- |\n"
-        icons = {"error": "🔴 High", "warning": "🟡 Medium", "note": "🔵 Low"}
+        
+        # DEFINED CRITICAL CWES FOR LOCAL ESCALATION
+        CRITICAL_CWES = ['CWE-078', 'CWE-088', 'CWE-094', 'CWE-502']
         
         for res in consolidated_results:
-            locs = res.get('locations', [{}])[0].get('physicalLocation', {})
+            locs = res.get('locations', [{}]).get('physicalLocation', {})
             path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
             line = locs.get('region', {}).get('startLine', '?')
             level = res.get('level', 'warning')
             rule_id = res.get('ruleId', 'Unknown')
             
-            # Gather and format accumulated CWEs for this rule
             cwes_set = cwe_map.get(rule_id, set())
             cwe_display = ", ".join(sorted(list(cwes_set))) if cwes_set else "N/A"
             
+            # FIXED SMART SEVERITY MAPPING: Escalate severe CWEs to High icon status
+            is_critical_cwe = any(c in CRITICAL_CWES for c in cwes_set)
+            if level == 'error' or is_critical_cwe:
+                icon_display = "🔴 High"
+            elif level == 'warning':
+                icon_display = "🟡 Medium"
+            else:
+                icon_display = "🔵 Low"
+            
             msg = res.get('message', {}).get('text', 'No description').split('\n')[0]
-            summary_md += f"| {icons.get(level, '🟡')} | **{cwe_display}** | `{rule_id}` | `{path}:{line}` | {msg} |\n"
+            summary_md += f"| {icon_display} | **{cwe_display}** | `{rule_id}` | `{path}:{line}` | {msg} |\n"
 
     summary_file = os.environ.get('GITHUB_STEP_SUMMARY', 'summary.md')
     with open(summary_file, 'a') as f:
