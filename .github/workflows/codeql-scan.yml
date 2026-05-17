@@ -132,16 +132,21 @@ jobs:
                   runs = data.get('runs', [{}])
                   res = runs.get('results', []) if runs else []
                   
-                  # Map rule IDs to CWE tags out of the internal metadata array
+                  # FIXED GLOBAL EXPANDED CWE TRACKER
                   local_cwe_map = {}
                   try:
-                      rules = runs.get('tool', {}).get('driver', {}).get('rules', [])
-                      for rule in rules:
+                      tool = runs.get('tool', {})
+                      all_rules = []
+                      all_rules.extend(tool.get('driver', {}).get('rules', []))
+                      for ext in tool.get('extensions', []):
+                          all_rules.extend(ext.get('rules', []))
+                          
+                      for rule in all_rules:
                           r_id = rule.get('id')
                           tags = rule.get('properties', {}).get('tags', [])
                           for t in tags:
                               if 'cwe-' in t.lower():
-                                  c_num = t.lower().split('cwe-')
+                                  c_num = t.lower().split('cwe-')[-1]
                                   local_cwe_map[r_id] = f'CWE-{c_num}'.upper()
                   except: pass
 
@@ -152,7 +157,6 @@ jobs:
                   m = sum(1 for r in res if r.get('level', 'warning') == 'warning')
                   l = sum(1 for r in res if r.get('level') == 'note')
                   
-                  # Increment global frequency trackers
                   for r in res:
                       cwe_id = local_cwe_map.get(r.get('ruleId'), 'Unclassified')
                       cwe_tracker[cwe_id] = cwe_tracker.get(cwe_id, 0) + 1
@@ -174,7 +178,7 @@ jobs:
           
           print('\n### 🎯 Discovered AI Weaknesses (CWE Frequency)')
           if cwe_tracker:
-              # Take top 5 CWEs sorted descending by frequency count
+              # Sort using the count value of the dictionary item
               for cwe, count in sorted(cwe_tracker.items(), key=lambda item: item, reverse=True)[:5]:
                   print(f'- **{cwe}**: Found {count} time(s)')
           else:
