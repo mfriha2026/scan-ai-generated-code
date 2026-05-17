@@ -50,7 +50,11 @@ def main():
         if not isinstance(run, dict): continue
         for res in run.get('results', []):
             rule_id = res.get('ruleId', 'Unknown')
-            locs = res.get('locations', [{}]).get('physicalLocation', {})
+            
+            # SAFE ARRAY INDEX FIX: Check if locations is a valid list with elements
+            locs_arr = res.get('locations', [])
+            locs = locs_arr[0].get('physicalLocation', {}) if isinstance(locs_arr, list) and len(locs_arr) > 0 else {}
+            
             path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
             line = locs.get('region', {}).get('startLine', '?')
             
@@ -64,11 +68,13 @@ def main():
     if consolidated_results:
         summary_md += "| Severity | CWE | Vulnerability | File:Line | Description |\n| :--- | :--- | :--- | :--- | :--- |\n"
         
-        # DEFINED CRITICAL CWES FOR LOCAL ESCALATION
         CRITICAL_CWES = ['CWE-078', 'CWE-088', 'CWE-094', 'CWE-502']
         
         for res in consolidated_results:
-            locs = res.get('locations', [{}]).get('physicalLocation', {})
+            # SAFE ARRAY INDEX FIX: Apply the exact same structural list check here
+            locs_arr = res.get('locations', [])
+            locs = locs_arr[0].get('physicalLocation', {}) if isinstance(locs_arr, list) and len(locs_arr) > 0 else {}
+            
             path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
             line = locs.get('region', {}).get('startLine', '?')
             level = res.get('level', 'warning')
@@ -77,7 +83,6 @@ def main():
             cwes_set = cwe_map.get(rule_id, set())
             cwe_display = ", ".join(sorted(list(cwes_set))) if cwes_set else "N/A"
             
-            # FIXED SMART SEVERITY MAPPING: Escalate severe CWEs to High icon status
             is_critical_cwe = any(c in CRITICAL_CWES for c in cwes_set)
             if level == 'error' or is_critical_cwe:
                 icon_display = "🔴 High"
