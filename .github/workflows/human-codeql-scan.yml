@@ -123,7 +123,7 @@ jobs:
                   parts = name_root.split('--')
                   if len(parts) < 4: continue
                   
-                  # FIXED CORRECT HUMAN INDEX MAPPING
+                  # FIXED THE MATCHER METRIC NAMES CONVERSION
                   repo_path = parts[1].replace('_SLASH_', '/')
                   pr_num = parts[2]
                   lang = parts[3]
@@ -137,8 +137,7 @@ jobs:
                       if isinstance(run, dict):
                           for result in run.get('results', []):
                               rule_id = result.get('ruleId', 'Unknown')
-                              locs = result.get('locations', [{}]).get('physicalLocation', {}) if isinstance(result.get('locations'), list) and len(result.get('locations')) > 0 else result.get('locations', {}).get('physicalLocation', {}) if isinstance(result.get('locations'), list) else result.get('locations', {}).get('physicalLocation', {})
-                              if isinstance(locs, list): locs = locs[0] if len(locs) > 0 else {}
+                              locs = result.get('locations', [{}])[0].get('physicalLocation', {}) if isinstance(result.get('locations'), list) and len(result.get('locations')) > 0 else result.get('locations', {}).get('physicalLocation', {})
                               path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
                               line = locs.get('region', {}).get('startLine', '?')
                               
@@ -187,7 +186,15 @@ jobs:
                               pr_cwes.add(cwe_id)
                   
                   cwe_display = ', '.join(sorted(list(pr_cwes))) if pr_cwes else 'None'
-                  u_files = len(set(loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri') for loc in r.get('locations', []) if isinstance(loc, dict) and loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri') for r in res))
+                  
+                  # FIXED THE NESTED ARRAYS WALKING ITERATOR ROUTINE
+                  unique_files = set()
+                  for r in res:
+                      for loc in r.get('locations', []):
+                          if isinstance(loc, dict):
+                              uri = loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri')
+                              if uri: unique_files.add(uri)
+                  u_files = len(unique_files)
                   
                   full_url = '/'.join(['https://github.com', repo_path, 'pull', pr_num])
                   link_md = f'[#{pr_num}]({full_url})'
@@ -204,13 +211,12 @@ jobs:
           
           print('\n### 🎯 Discovered Human Weaknesses (Top 5 CWE Frequency)')
           if cwe_tracker:
-              for cwe, count in sorted(cwe_tracker.items(), key=lambda item: item[1], reverse=True)[:5]:
+              for cwe, count in sorted(cwe_tracker.items(), key=lambda item: item, reverse=True)[:5]:
                   print(f'- **{cwe}**: Found {count} time(s)')
           else:
               print('- No distinct CWE records mapped.')
 
           print('\n| Repository | PR | Lang | CWE Discovered | 🔴 H | 🟡 M | 🔵 L | Total (Files) |')
-          # FIXED REMOVED EXTRA NEWLINE PREFIX FOR ACCURATE GRID RENDERING
           print('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
           for r in sorted(table_rows): print(r)
           " >> $GITHUB_STEP_SUMMARY
