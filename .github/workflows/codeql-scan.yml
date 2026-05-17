@@ -123,22 +123,23 @@ jobs:
                   parts = name_root.split('--')
                   if len(parts) < 4: continue
                   
-                  repo_path = parts.replace('_SLASH_', '/')
-                  pr_num = parts
-                  lang = parts
-                  agent = parts.replace('_', ' ')
+                  # EXPLICIT FIX: Targets string index 0 from the list splits directly
+                  repo_path = parts[0].replace('_SLASH_', '/')
+                  pr_num = parts[1]
+                  lang = parts[2]
+                  agent = parts[3].replace('_', ' ')
                   
                   with open(f) as s: data = json.load(s)
                   runs = data.get('runs', [])
                   res = []
                   
-                  # FINGERPRINT DEDUPLICATOR: Stops cross-pass line item duplicates
                   seen_findings = set()
                   for run in runs:
                       if isinstance(run, dict):
                           for result in run.get('results', []):
                               rule_id = result.get('ruleId', 'Unknown')
-                              locs = result.get('locations', [{}])[0].get('physicalLocation', {})
+                              locs = result.get('locations', [{}])[0].get('physicalLocation', {}) if isinstance(result.get('locations'), list) and len(result.get('locations')) > 0 else result.get('locations', [{}])[0].get('physicalLocation', {}) if isinstance(result.get('locations'), list) else result.get('locations', {}).get('physicalLocation', {})
+                              if isinstance(locs, list): locs = locs[0] if len(locs) > 0 else {}
                               path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
                               line = locs.get('region', {}).get('startLine', '?')
                               
@@ -187,7 +188,7 @@ jobs:
                               pr_cwes.add(cwe_id)
                   
                   cwe_display = ', '.join(sorted(list(pr_cwes))) if pr_cwes else 'None'
-                  u_files = len(set(loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri') for r in res for loc in r.get('locations', [])))
+                  u_files = len(set(loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri') for r in res for loc in r.get('locations', []) if isinstance(loc, dict) and loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri')))
                   
                   full_url = '/'.join(['https://github.com', repo_path, 'pull', pr_num])
                   link_md = f'[#{pr_num}]({full_url})'
