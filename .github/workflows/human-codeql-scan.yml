@@ -66,7 +66,6 @@ jobs:
           build-mode: none
           db-location: ${{ runner.temp }}/codeql_db
           trap-caching: false
-          # UPGRADED: Activated experimental and advanced human vulnerability verification rules
           queries: security-extended,security-experimental
 
       - name: Perform CodeQL Analysis
@@ -124,9 +123,10 @@ jobs:
                   parts = name_root.split('--')
                   if len(parts) < 4: continue
                   
-                  repo_path = parts.replace('_SLASH_', '/')
-                  pr_num = parts
-                  lang = parts
+                  # FIXED STR ELEMENT ACCESS
+                  repo_path = parts[1].replace('_SLASH_', '/')
+                  pr_num = parts[2]
+                  lang = parts[3]
                   
                   with open(f) as s: data = json.load(s)
                   runs = data.get('runs', [])
@@ -186,7 +186,14 @@ jobs:
                               pr_cwes.add(cwe_id)
                   
                   cwe_display = ', '.join(sorted(list(pr_cwes))) if pr_cwes else 'None'
-                  u_files = len(set(loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri') for loc in r.get('locations', []) if isinstance(loc, dict) and loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri') for r in res))
+                  
+                  unique_files = set()
+                  for r in res:
+                      for loc in r.get('locations', []):
+                          if isinstance(loc, dict):
+                              uri = loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri')
+                              if uri: unique_files.add(uri)
+                  u_files = len(unique_files)
                   
                   full_url = '/'.join(['https://github.com', repo_path, 'pull', pr_num])
                   link_md = f'[#{pr_num}]({full_url})'
