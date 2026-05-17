@@ -10,12 +10,12 @@ def run_command(command, max_retries=2):
     return None
 
 def main():
-    # --- CONFIGURATION ---
+    # --- CONFIGURATION (TEST LIMIT TO 10) ---
     INPUT_CSV = "human_scan_list.csv" 
     MAX_PR_LINES = 1000 
-    SCAN_LIMIT = 500
+    SCAN_LIMIT = 10     # Reduced from 500 to 10 for testing
     
-    # UPDATED: Added microsoft/TypeScript to the exclusion list
+    # Exclude list with the problematic/large repositories discovered during scans
     EXCLUDE_REPOS = [
         "BerriAI/litellm", 
         "elastic/kibana",
