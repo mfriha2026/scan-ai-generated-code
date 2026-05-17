@@ -66,7 +66,8 @@ jobs:
           build-mode: none
           db-location: ${{ runner.temp }}/codeql_db
           trap-caching: false
-          queries: security-extended
+          # UPGRADED: Activated experimental and advanced human vulnerability verification rules
+          queries: security-extended,security-experimental
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
@@ -123,10 +124,9 @@ jobs:
                   parts = name_root.split('--')
                   if len(parts) < 4: continue
                   
-                  # FIXED THE MATCHER METRIC NAMES CONVERSION
-                  repo_path = parts[1].replace('_SLASH_', '/')
-                  pr_num = parts[2]
-                  lang = parts[3]
+                  repo_path = parts.replace('_SLASH_', '/')
+                  pr_num = parts
+                  lang = parts
                   
                   with open(f) as s: data = json.load(s)
                   runs = data.get('runs', [])
@@ -137,7 +137,7 @@ jobs:
                       if isinstance(run, dict):
                           for result in run.get('results', []):
                               rule_id = result.get('ruleId', 'Unknown')
-                              locs = result.get('locations', [{}])[0].get('physicalLocation', {}) if isinstance(result.get('locations'), list) and len(result.get('locations')) > 0 else result.get('locations', {}).get('physicalLocation', {})
+                              locs = result.get('locations', [{}]).get('physicalLocation', {}) if isinstance(result.get('locations'), list) and len(result.get('locations')) > 0 else result.get('locations', {}).get('physicalLocation', {})
                               path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
                               line = locs.get('region', {}).get('startLine', '?')
                               
@@ -186,15 +186,7 @@ jobs:
                               pr_cwes.add(cwe_id)
                   
                   cwe_display = ', '.join(sorted(list(pr_cwes))) if pr_cwes else 'None'
-                  
-                  # FIXED THE NESTED ARRAYS WALKING ITERATOR ROUTINE
-                  unique_files = set()
-                  for r in res:
-                      for loc in r.get('locations', []):
-                          if isinstance(loc, dict):
-                              uri = loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri')
-                              if uri: unique_files.add(uri)
-                  u_files = len(unique_files)
+                  u_files = len(set(loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri') for loc in r.get('locations', []) if isinstance(loc, dict) and loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri') for r in res))
                   
                   full_url = '/'.join(['https://github.com', repo_path, 'pull', pr_num])
                   link_md = f'[#{pr_num}]({full_url})'
@@ -207,7 +199,7 @@ jobs:
           print('\n### Executive Summary')
           print(f'- **Total Human PRs Scanned:** {total_scanned}')
           print(f'- **PRs with Issues:** {vulnerable_count} ⚠️')
-          print(f'- **Clean PRs:** {total_scanned - vulnerable_count} ✅')
+          print(f'- **Clean Human PRs:** {total_scanned - vulnerable_count} ✅')
           
           print('\n### 🎯 Discovered Human Weaknesses (Top 5 CWE Frequency)')
           if cwe_tracker:
