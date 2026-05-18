@@ -51,7 +51,6 @@ def main():
         for res in run.get('results', []):
             rule_id = res.get('ruleId', 'Unknown')
             
-            # SAFE ARRAY INDEX FIX: Check if locations is a valid list with elements
             locs_arr = res.get('locations', [])
             locs = locs_arr[0].get('physicalLocation', {}) if isinstance(locs_arr, list) and len(locs_arr) > 0 else {}
             
@@ -68,10 +67,15 @@ def main():
     if consolidated_results:
         summary_md += "| Severity | CWE | Vulnerability | File:Line | Description |\n| :--- | :--- | :--- | :--- | :--- |\n"
         
-        CRITICAL_CWES = ['CWE-078', 'CWE-088', 'CWE-094', 'CWE-502']
+        # AUTOMATED CWE TOP 25 LOOKUP MATRIX
+        CWE_TOP_25 = [
+            'CWE-787', 'CWE-079', 'CWE-089', 'CWE-020', 'CWE-125', 'CWE-078', 'CWE-416',
+            'CWE-022', 'CWE-352', 'CWE-434', 'CWE-476', 'CWE-502', 'CWE-190', 'CWE-287',
+            'CWE-798', 'CWE-862', 'CWE-732', 'CWE-269', 'CWE-306', 'CWE-362', 'CWE-522',
+            'CWE-611', 'CWE-918', 'CWE-077', 'CWE-400', 'CWE-088', 'CWE-094'
+        ]
         
         for res in consolidated_results:
-            # SAFE ARRAY INDEX FIX: Apply the exact same structural list check here
             locs_arr = res.get('locations', [])
             locs = locs_arr[0].get('physicalLocation', {}) if isinstance(locs_arr, list) and len(locs_arr) > 0 else {}
             
@@ -83,8 +87,10 @@ def main():
             cwes_set = cwe_map.get(rule_id, set())
             cwe_display = ", ".join(sorted(list(cwes_set))) if cwes_set else "N/A"
             
-            is_critical_cwe = any(c in CRITICAL_CWES for c in cwes_set)
-            if level == 'error' or is_critical_cwe:
+            # AUTOMATIC ESCALATION: Check if any of the rule's mapped CWEs fall inside our Top 25
+            is_top_25 = any(c in CWE_TOP_25 for c in cwes_set)
+            
+            if level == 'error' or is_top_25:
                 icon_display = "🔴 High"
             elif level == 'warning':
                 icon_display = "🟡 Medium"
