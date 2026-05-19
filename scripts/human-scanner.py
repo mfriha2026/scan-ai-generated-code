@@ -10,10 +10,10 @@ def run_command(command, max_retries=2):
     return None
 
 def main():
-    # --- CONFIGURATION (TEST LIMIT TO 5) ---
+    # --- CONFIGURATION (TEST LIMIT TO 100) ---
     INPUT_CSV = "human_scan_list_high.csv" 
     MAX_PR_LINES = 1000 
-    SCAN_LIMIT = 5     # Reduced from 500 to 5 for testing
+    SCAN_LIMIT = 100     # Reduced from 500 to 100 for testing
     
     # Exclude list with the problematic/large repositories discovered during scans
     EXCLUDE_REPOS = [
