@@ -11,7 +11,7 @@ def run_command(command, max_retries=2):
 
 def main():
     # --- CONFIGURATION (TEST LIMIT TO 100) ---
-    INPUT_CSV = "human_scan_list_high.csv" 
+    INPUT_CSV = "human_scan_list.csv" 
     MAX_PR_LINES = 1000 
     SCAN_LIMIT = 100     # Reduced from 500 to 100 for testing
     
