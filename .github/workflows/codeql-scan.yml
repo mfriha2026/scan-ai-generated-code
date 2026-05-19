@@ -40,7 +40,6 @@ jobs:
     env:
       CODEQL_RAM: 12000
     strategy:
-      # CRITICAL SAFEGUARD: Prevents one failed repo scan from canceling the rest of the 500 PR matrix queue
       fail-fast: false
       max-parallel: 10
       matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
@@ -138,7 +137,7 @@ jobs:
                       if isinstance(run, dict):
                           for result in run.get('results', []):
                               rule_id = result.get('ruleId', 'Unknown')
-                              locs = result.get('locations', [{}]).get('physicalLocation', {}) if isinstance(result.get('locations'), list) and len(result.get('locations')) > 0 else result.get('locations', {}).get('physicalLocation', {})
+                              locs = result.get('locations', [{}])[0].get('physicalLocation', {}) if isinstance(result.get('locations'), list) and len(result.get('locations')) > 0 else result.get('locations', {}).get('physicalLocation', {})
                               path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
                               line = locs.get('region', {}).get('startLine', '?')
                               
@@ -174,6 +173,7 @@ jobs:
                   total_scanned += 1
                   if len(res) > 0: vulnerable_count += 1
                   
+                  # AUTOMATED CWE TOP 25 MAPPING ESCALATION
                   h, m, l = 0, 0, 0
                   CWE_TOP_25 = [
                       'CWE-787', 'CWE-079', 'CWE-089', 'CWE-020', 'CWE-125', 'CWE-078', 'CWE-416',
@@ -221,7 +221,7 @@ jobs:
           
           print('\n### 🎯 Discovered AI Weaknesses (Top 5 CWE Frequency)')
           if cwe_tracker:
-              for cwe, count in sorted(cwe_tracker.items(), key=lambda item: item, reverse=True)[:5]:
+              for cwe, count in sorted(cwe_tracker.items(), key=lambda item: item[1], reverse=True)[:5]:
                   print(f'- **{cwe}**: Found {count} time(s)')
           else:
               print('- No distinct CWE records mapped.')
