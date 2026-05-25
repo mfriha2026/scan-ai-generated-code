@@ -2,25 +2,6 @@ name: "Human CodeQL Scan Auditing"
 
 on:
   workflow_dispatch:
-    inputs:
-      repo_name:
-        description: "Target Repository Path (e.g., antiwork/gumroad)"
-        required: true
-        type: string
-      pr_num:
-        description: "Target Pull Request Number (e.g., 710)"
-        required: true
-        type: string
-      language:
-        description: "Primary Language Footprint (e.g., ruby, python, javascript)"
-        required: true
-        type: string
-        default: "python"
-      agent_name:
-        description: "AI Coding Agent Identifier"
-        required: true
-        type: string
-        default: "Human_Auditor"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -32,37 +13,37 @@ permissions:
 
 jobs:
   discover:
-    name: Prepare Manual Audit Matrix
+    name: Find Human Audit PRs
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.manual_payload.outputs.matrix_data }}
+      matrix: ${{ steps.detect.outputs.matrix_data }}
     steps:
-      - name: Build Manual Targeting Matrix Payload
-        id: manual_payload
-        run: |
-          SAFE_CAT=$(echo "${{ inputs.repo_name }}" | sed 's/\//_SLASH_/g')--${{ inputs.pr_num }}--${{ inputs.language }}--${{ inputs.agent_name }}
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
           
-          echo "matrix_data<<EOF" >> $GITHUB_OUTPUT
-          echo "{\"include\":[
-            {
-              \"repo_name\":\"${{ inputs.repo_name }}\",
-              \"pr_num\":\"${{ inputs.pr_num }}\",
-              \"language\":\"${{ inputs.language }}\",
-              \"agent_name\":\"${{ inputs.agent_name }}\",
-              \"category_name\":\"$SAFE_CAT\"
-            }
-          ]}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+      - name: Discover Scan Matrix
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GLOBAL_SCAN_PAT }}
+        run: |
+          pip install pandas
+          python scripts/human-scanner.py
 
   analyze:
     name: Scan ${{ matrix.repo_name }} (#${{ matrix.pr_num }}) - [${{ matrix.language }}]
     needs: discover
+    if:  ${{ needs.discover.outputs.matrix != '' && fromJson(needs.discover.outputs.matrix).include != null }} 
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     env:
       CODEQL_RAM: 12000
     strategy:
       fail-fast: false
+      max-parallel: 10
       matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
     
     steps:
@@ -141,6 +122,6 @@ jobs:
 
       - name: Generate Consolidated Summary Table
         env:
-          MATRIX_JSON: ${{ needs.discover.outputs.matrix }}
+          MATRIX_JSON:  ${{ needs.discover.outputs.matrix }} 
         run: |
           python scripts/consolidate-report.py
