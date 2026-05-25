@@ -22,7 +22,7 @@ def main():
     vulnerable_count = 0
     cwe_tracker = {}
     
-    # --- FIXED: DETECT IF ANY FILE CONTAINS THE HUMAN AUDITOR MARKER ---
+    # Check if this execution contains human-triage audit markers
     is_human_run = any("Human_Auditor" in os.path.basename(f) for f in all_files)
 
     for f in all_files:
@@ -36,6 +36,7 @@ def main():
             if len(parts) < 4: 
                 continue
             
+            # --- FIX: ADDED REQUIRED LIST STRING ARRAY ARRAY INDICES ---
             repo_path = parts[0].replace('_SLASH_', '/')
             pr_num = parts[1]
             lang = parts[2]
@@ -140,7 +141,7 @@ def main():
             full_url = '/'.join(['https://github.com', repo_path, 'pull', pr_num])
             link_md = f'[#{pr_num}]({full_url})'
             
-            # --- FIXED: OMIT THE AGENT FIELD IF THE FILE CONTAINS HUMAN_AUDITOR ---
+            # Conditionally format the data columns depending on the scan type
             if "Human_Auditor" in fname:
                 table_rows.append(f'| {repo_path} | {link_md} | {lang} | {row_severity_badge} | **{cwe_display}** | {h} | {m} | {l} | {len(res)} ({u_files}) |')
             else:
@@ -165,7 +166,7 @@ def main():
         else:
             out.write('- No distinct CWE records mapped.\n')
             
-        # --- CONDITIONAL COLUMN HEADER BADGE SWITCH ---
+        # Conditionally hide or show the AI Tool column header
         if is_human_run:
             out.write('\n| Repository | PR | Lang | Overall Severity | CWE Discovered | 🔴 H | 🟡 M | 🔵 L | Total (Files) |\n')
             out.write('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n')
