@@ -22,18 +22,13 @@ def main():
     vulnerable_count = 0
     cwe_tracker = {}
     
-    # --- DYNAMIC TRIGGER ENGINE ---
-    # Automatically tracks if any incoming payload log belongs to a manual human run
-    is_human_run = False
+    # --- FIXED: DETECT IF ANY FILE CONTAINS THE HUMAN AUDITOR MARKER ---
+    is_human_run = any("Human_Auditor" in os.path.basename(f) for f in all_files)
 
     for f in all_files:
         fname = os.path.basename(f)
         if fname == 'results.sarif' or '--' not in fname: 
             continue
-            
-        # Detect if the baseline artifact contains your human scanner prefix matching rules
-        if fname.startswith('human--'):
-            is_human_run = True
 
         try:
             name_root = fname.replace('.sarif', '')
@@ -145,9 +140,8 @@ def main():
             full_url = '/'.join(['https://github.com', repo_path, 'pull', pr_num])
             link_md = f'[#{pr_num}]({full_url})'
             
-            # --- CONDITION CELL GENERATOR SYSTEM ---
-            if fname.startswith('human--'):
-                # Hides the agent row item if it belongs to a human manual sweep
+            # --- FIXED: OMIT THE AGENT FIELD IF THE FILE CONTAINS HUMAN_AUDITOR ---
+            if "Human_Auditor" in fname:
                 table_rows.append(f'| {repo_path} | {link_md} | {lang} | {row_severity_badge} | **{cwe_display}** | {h} | {m} | {l} | {len(res)} ({u_files}) |')
             else:
                 table_rows.append(f'| {repo_path} | {link_md} | {agent} | {lang} | {row_severity_badge} | **{cwe_display}** | {h} | {m} | {l} | {len(res)} ({u_files}) |')
@@ -171,7 +165,7 @@ def main():
         else:
             out.write('- No distinct CWE records mapped.\n')
             
-        # --- CONDITIONAL COLUMN HEADER BADGE ENGINE ---
+        # --- CONDITIONAL COLUMN HEADER BADGE SWITCH ---
         if is_human_run:
             out.write('\n| Repository | PR | Lang | Overall Severity | CWE Discovered | 🔴 H | 🟡 M | 🔵 L | Total (Files) |\n')
             out.write('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n')
