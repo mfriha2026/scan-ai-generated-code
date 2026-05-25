@@ -109,6 +109,8 @@ def main():
                 level = r.get('level', 'warning')
                 cwes_for_rule = local_cwe_map.get(r_id, set())
                 is_top_25 = any(c in CWE_TOP_25 for c in cwes_for_rule)
+
+                is_top_25 = false
                 
                 if level == 'error' or is_top_25: h += 1
                 elif level == 'warning': m += 1
