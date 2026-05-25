@@ -4,6 +4,9 @@ import os
 
 def main():
     matrix_str = os.environ.get('MATRIX_JSON', '{}')
+    # --- FIXED: DIRECTLY SENSE SCAN CONTEXT FROM PARENT PIPELINE ---
+    scan_type = os.environ.get('SCAN_TYPE', 'automated').lower()
+    
     try:
         matrix_data = json.loads(matrix_str)
         tot = len(matrix_data.get('include', []))
@@ -21,9 +24,6 @@ def main():
     total_scanned = 0
     vulnerable_count = 0
     cwe_tracker = {}
-    
-    # Check if this execution contains human-triage audit markers
-    is_human_run = any("Human_Auditor" in os.path.basename(f) for f in all_files)
 
     for f in all_files:
         fname = os.path.basename(f)
@@ -36,7 +36,6 @@ def main():
             if len(parts) < 4: 
                 continue
             
-            # --- FIX: ADDED REQUIRED LIST STRING ARRAY ARRAY INDICES ---
             repo_path = parts[0].replace('_SLASH_', '/')
             pr_num = parts[1]
             lang = parts[2]
@@ -141,8 +140,8 @@ def main():
             full_url = '/'.join(['https://github.com', repo_path, 'pull', pr_num])
             link_md = f'[#{pr_num}]({full_url})'
             
-            # Conditionally format the data columns depending on the scan type
-            if "Human_Auditor" in fname:
+            # --- FIXED: RENDER CELLS MATCHING THE HARD ENVIRONMENTAL CONTEXT ---
+            if scan_type == 'human':
                 table_rows.append(f'| {repo_path} | {link_md} | {lang} | {row_severity_badge} | **{cwe_display}** | {h} | {m} | {l} | {len(res)} ({u_files}) |')
             else:
                 table_rows.append(f'| {repo_path} | {link_md} | {agent} | {lang} | {row_severity_badge} | **{cwe_display}** | {h} | {m} | {l} | {len(res)} ({u_files}) |')
@@ -166,8 +165,8 @@ def main():
         else:
             out.write('- No distinct CWE records mapped.\n')
             
-        # Conditionally hide or show the AI Tool column header
-        if is_human_run:
+        # --- FIXED: CONDITION HEADER MAPPING ENFORCED VIA WORKFLOW ENVIRONMENT VARIABLE ---
+        if scan_type == 'human':
             out.write('\n| Repository | PR | Lang | Overall Severity | CWE Discovered | 🔴 H | 🟡 M | 🔵 L | Total (Files) |\n')
             out.write('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n')
         else:
