@@ -10,10 +10,10 @@ def run_command(command, max_retries=2):
     return None
 
 def main():
-    # --- CONFIGURATION (TEST LIMIT TO 100) ---
+    # --- CONFIGURATION (TEST LIMIT TO 5) ---
     INPUT_CSV = "aidev_scan_list.csv"
     MAX_PR_LINES = 1000 
-    SCAN_LIMIT = 100     # Reduced from 500 to 100 for testing
+    SCAN_LIMIT = 5     # Reduced from 500 to 5 for testing
     EXCLUDE_REPOS = ["BerriAI/litellm", "elastic/kibana"]
     
     # --- TRACKING ---
