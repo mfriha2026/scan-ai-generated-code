@@ -84,7 +84,11 @@ jobs:
             cp sarif-results/*.sarif ./results.sarif 2>/dev/null || true
             SAFE_REPO=$(echo "${{ matrix.repo_name }}" | sed 's/\//_SLASH_/g')
             cp sarif-results/*.sarif "./${SAFE_REPO}--${{ matrix.pr_num }}--${{ matrix.language }}--${{ matrix.agent_name }}.sarif" 2>/dev/null || true
-            python scripts/parse-results.py
+            echo "success" > "./${SAFE_REPO}--${{ matrix.pr_num }}.success"
+            python scripts/parse-results.py || true
+          else
+            SAFE_REPO=$(echo "${{ matrix.repo_name }}" | sed 's/\//_SLASH_/g')
+            echo "failed" > "./${SAFE_REPO}--${{ matrix.pr_num }}.failed"
           fi
 
       - name: Save Artifacts
@@ -92,7 +96,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sarif-${{ matrix.category_name }}
-          path: "*.sarif"
+          path: |
+            *.sarif
+            *.success
+            *.failed
 
   report:
     name: Consolidate Final Report
@@ -100,133 +107,19 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      
+      - name: Download Available Artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           pattern: sarif-*
           path: all-results
           merge-multiple: true
-      - name: Generate Consolidated Summary
+
+      - name: Generate Consolidated Summary Table
+        env:
+          MATRIX_JSON: ${{ needs.discover.outputs.matrix }}
         run: |
-          python3 -c "
-          import json, glob, os
-          all_files = sorted(glob.glob('all-results/**/*.sarif', recursive=True))
-          table_rows = []
-          total_scanned = 0
-          vulnerable_count = 0
-          cwe_tracker = {}
-
-          for f in all_files:
-              fname = os.path.basename(f)
-              if fname == 'results.sarif' or '--' not in fname: continue
-              try:
-                  name_root = fname.replace('.sarif', '')
-                  parts = name_root.split('--')
-                  if len(parts) < 4: continue
-                  
-                  repo_path = parts[0].replace('_SLASH_', '/')
-                  pr_num = parts[1]
-                  lang = parts[2]
-                  agent = parts[3].replace('_', ' ')
-                  
-                  with open(f) as s: data = json.load(s)
-                  runs = data.get('runs', [])
-                  res = []
-                  
-                  seen_findings = set()
-                  for run in runs:
-                      if isinstance(run, dict):
-                          for result in run.get('results', []):
-                              rule_id = result.get('ruleId', 'Unknown')
-                              locs = result.get('locations', [{}])[0].get('physicalLocation', {}) if isinstance(result.get('locations'), list) and len(result.get('locations')) > 0 else result.get('locations', {}).get('physicalLocation', {})
-                              path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
-                              line = locs.get('region', {}).get('startLine', '?')
-                              
-                              fingerprint = f'{rule_id}::{path}::{line}'
-                              if fingerprint not in seen_findings:
-                                  seen_findings.add(fingerprint)
-                                  res.append(result)
-                  
-                  local_cwe_map = {}
-                  try:
-                      for run in runs:
-                          if not isinstance(run, dict): continue
-                          tool = run.get('tool', {})
-                          all_rules = []
-                          all_rules.extend(tool.get('driver', {}).get('rules', []))
-                          for ext in tool.get('extensions', []):
-                              all_rules.extend(ext.get('rules', []))
-                              
-                          for rule in all_rules:
-                              r_id = rule.get('id')
-                              tags = rule.get('properties', {}).get('tags', [])
-                              if r_id not in local_cwe_map:
-                                  local_cwe_map[r_id] = set()
-                              for t in tags:
-                                  if 'cwe-' in t.lower():
-                                      c_num = t.lower().split('cwe-')[-1]
-                                      if len(c_num) < 3:
-                                          c_num = c_num.zfill(3)
-                                      local_cwe_map[r_id].add(f'CWE-{c_num}'.upper())
-                  except Exception as ex: 
-                      print(f'Metadata extract warning for {fname}: {ex}')
-
-                  total_scanned += 1
-                  if len(res) > 0: vulnerable_count += 1
-                  
-                  # AUTOMATED CWE TOP 25 MAPPING ESCALATION
-                  h, m, l = 0, 0, 0
-                  CWE_TOP_25 = [
-                      'CWE-787', 'CWE-079', 'CWE-089', 'CWE-020', 'CWE-125', 'CWE-078', 'CWE-416',
-                      'CWE-022', 'CWE-352', 'CWE-434', 'CWE-476', 'CWE-502', 'CWE-190', 'CWE-287',
-                      'CWE-798', 'CWE-862', 'CWE-732', 'CWE-269', 'CWE-306', 'CWE-362', 'CWE-522',
-                      'CWE-611', 'CWE-918', 'CWE-077', 'CWE-400', 'CWE-088', 'CWE-094'
-                  ]
-                  
-                  for r in res:
-                      r_id = r.get('ruleId', '')
-                      level = r.get('level', 'warning')
-                      cwes_for_rule = local_cwe_map.get(r_id, set())
-                      is_top_25 = any(c in CWE_TOP_25 for c in cwes_for_rule)
-                      
-                      if level == 'error' or is_top_25:
-                          h += 1
-                      elif level == 'warning':
-                          m += 1
-                      else:
-                          l += 1
-                  
-                  pr_cwes = set()
-                  for r in res:
-                      cwes_for_rule = local_cwe_map.get(r.get('ruleId'), set())
-                      if cwes_for_rule:
-                          for cwe_id in cwes_for_rule:
-                              cwe_tracker[cwe_id] = cwe_tracker.get(cwe_id, 0) + 1
-                              pr_cwes.add(cwe_id)
-                  
-                  cwe_display = ', '.join(sorted(list(pr_cwes))) if pr_cwes else 'None'
-                  u_files = len(set(loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri') for r in res for loc in r.get('locations', []) if isinstance(loc, dict) and loc.get('physicalLocation', {}).get('artifactLocation', {}).get('uri')))
-                  
-                  full_url = '/'.join(['https://github.com', repo_path, 'pull', pr_num])
-                  link_md = f'[#{pr_num}]({full_url})'
-                  
-                  table_rows.append(f'| {repo_path} | {link_md} | {agent} | {lang} | **{cwe_display}** | {h} | {m} | {l} | {len(res)} ({u_files}) |')
-              except Exception as e:
-                  print(f'Error processing {fname}: {e}')
-
-          print('# 📊 Global Analysis Summary')
-          print('\n### Executive Summary')
-          print(f'- **Total PRs Scanned:** {total_scanned}')
-          print(f'- **PRs with Issues:** {vulnerable_count} ⚠️')
-          print(f'- **Clean PRs:** {total_scanned - vulnerable_count} ✅')
-          
-          print('\n### 🎯 Discovered AI Weaknesses (Top 5 CWE Frequency)')
-          if cwe_tracker:
-              for cwe, count in sorted(cwe_tracker.items(), key=lambda item: item[1], reverse=True)[:5]:
-                  print(f'- **{cwe}**: Found {count} time(s)')
-          else:
-              print('- No distinct CWE records mapped.')
-
-          print('\n| Repository | PR | AI Tool | Lang | CWE Discovered | 🔴 H | 🟡 M | 🔵 L | Total (Files) |')
-          print('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |')
-          for r in sorted(table_rows): print(r)
-          " >> $GITHUB_STEP_SUMMARY
+          # --- CALLS INDEPENDENT PYTHON FILE TO PREVENT TRUNCATIONS ---
+          python scripts/consolidate-report.py
