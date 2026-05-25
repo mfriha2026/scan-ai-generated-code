@@ -1,4 +1,6 @@
-import json, os, sys
+import json
+import os
+import sys
 
 def main():
     sarif_path = "results.sarif"
@@ -50,16 +52,42 @@ def main():
         if not isinstance(run, dict): continue
         for res in run.get('results', []):
             rule_id = res.get('ruleId', 'Unknown')
-            
             locs_arr = res.get('locations', [])
-            locs = locs_arr[0].get('physicalLocation', {}) if isinstance(locs_arr, list) and len(locs_arr) > 0 else {}
             
-            path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
-            line = locs.get('region', {}).get('startLine', '?')
+            # --- FIX: TRACK DEDUPLICATION ACROSS ALL SUB-LOCATIONS ---
+            is_new_finding = False
+            primary_path = "Unknown"
+            primary_line = "?"
             
-            fingerprint = f"{rule_id}::{path}::{line}"
-            if fingerprint not in seen_findings:
-                seen_findings.add(fingerprint)
+            if isinstance(locs_arr, list) and len(locs_arr) > 0:
+                for loc_entry in locs_arr:
+                    if not isinstance(loc_entry, dict): continue
+                    locs = loc_entry.get('physicalLocation', {})
+                    path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
+                    line = locs.get('region', {}).get('startLine', '?')
+                    
+                    if primary_path == "Unknown":
+                        primary_path = path
+                        primary_line = line
+                    
+                    fingerprint = f"{rule_id}::{path}::{line}"
+                    if fingerprint not in seen_findings:
+                        seen_findings.add(fingerprint)
+                        is_new_finding = True
+            elif isinstance(locs_arr, dict):
+                locs = locs_arr.get('physicalLocation', {})
+                primary_path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
+                primary_line = locs.get('region', {}).get('startLine', '?')
+                
+                fingerprint = f"{rule_id}::{primary_path}::{primary_line}"
+                if fingerprint not in seen_findings:
+                    seen_findings.add(fingerprint)
+                    is_new_finding = True
+
+            if is_new_finding:
+                # Store the primary location references explicitly for row mapping
+                res['_primary_path'] = primary_path
+                res['_primary_line'] = primary_line
                 consolidated_results.append(res)
 
     summary_md = f"\n### 🛡️ Analysis Details: {len(consolidated_results)} Distinct Issues Found\n"
@@ -67,7 +95,6 @@ def main():
     if consolidated_results:
         summary_md += "| Severity | CWE | Vulnerability | File:Line | Description |\n| :--- | :--- | :--- | :--- | :--- |\n"
         
-        # AUTOMATED CWE TOP 25 LOOKUP MATRIX
         CWE_TOP_25 = [
             'CWE-787', 'CWE-079', 'CWE-089', 'CWE-020', 'CWE-125', 'CWE-078', 'CWE-416',
             'CWE-022', 'CWE-352', 'CWE-434', 'CWE-476', 'CWE-502', 'CWE-190', 'CWE-287',
@@ -76,18 +103,14 @@ def main():
         ]
         
         for res in consolidated_results:
-            locs_arr = res.get('locations', [])
-            locs = locs_arr[0].get('physicalLocation', {}) if isinstance(locs_arr, list) and len(locs_arr) > 0 else {}
-            
-            path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
-            line = locs.get('region', {}).get('startLine', '?')
+            path = res.get('_primary_path', 'Unknown')
+            line = res.get('_primary_line', '?')
             level = res.get('level', 'warning')
             rule_id = res.get('ruleId', 'Unknown')
             
             cwes_set = cwe_map.get(rule_id, set())
             cwe_display = ", ".join(sorted(list(cwes_set))) if cwes_set else "N/A"
             
-            # AUTOMATIC ESCALATION: Check if any of the rule's mapped CWEs fall inside our Top 25
             is_top_25 = any(c in CWE_TOP_25 for c in cwes_set)
             
             if level == 'error' or is_top_25:
@@ -98,7 +121,7 @@ def main():
                 icon_display = "🔵 Low"
             
             msg = res.get('message', {}).get('text', 'No description').split('\n')[0]
-            summary_md += f"| {icon_display} | **{cwe_display}** | `{rule_id}` | `{path}:{line}` | {msg} |\n"
+            summary_md += f"| {icon_display} | **{cdisplay if 'cwe_display' in locals() else cwe_display}** | `{rule_id}` | `{path}:{line}` | {msg} |\n"
 
     summary_file = os.environ.get('GITHUB_STEP_SUMMARY', 'summary.md')
     with open(summary_file, 'a') as f:
