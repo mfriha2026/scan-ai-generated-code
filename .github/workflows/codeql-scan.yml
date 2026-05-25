@@ -120,6 +120,7 @@ jobs:
       - name: Generate Consolidated Summary Table
         env:
           MATRIX_JSON: ${{ needs.discover.outputs.matrix }}
+          SCAN_TYPE: "automated" # <-- ADD THIS LINE
         run: |
           # --- CALLS INDEPENDENT PYTHON FILE TO PREVENT TRUNCATIONS ---
           python scripts/consolidate-report.py
