@@ -123,5 +123,6 @@ jobs:
       - name: Generate Consolidated Summary Table
         env:
           MATRIX_JSON:  ${{ needs.discover.outputs.matrix }} 
+          SCAN_TYPE: "human" # <-- ADD THIS LINE
         run: |
           python scripts/consolidate-report.py
