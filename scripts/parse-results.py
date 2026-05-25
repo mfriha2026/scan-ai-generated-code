@@ -89,8 +89,6 @@ def main():
             
             # AUTOMATIC ESCALATION: Check if any of the rule's mapped CWEs fall inside our Top 25
             is_top_25 = any(c in CWE_TOP_25 for c in cwes_set)
-
-            is_top_25 = false
             
             if level == 'error' or is_top_25:
                 icon_display = "🔴 High"
