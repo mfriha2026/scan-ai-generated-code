@@ -4,7 +4,6 @@ import os
 
 def main():
     matrix_str = os.environ.get('MATRIX_JSON', '{}')
-    # --- FIXED: DIRECTLY SENSE SCAN CONTEXT FROM PARENT PIPELINE ---
     scan_type = os.environ.get('SCAN_TYPE', 'automated').lower()
     
     try:
@@ -24,6 +23,8 @@ def main():
     total_scanned = 0
     vulnerable_count = 0
     cwe_tracker = {}
+    
+    is_human_run = any("Human_Auditor" in os.path.basename(f) for f in all_files)
 
     for f in all_files:
         fname = os.path.basename(f)
@@ -51,21 +52,31 @@ def main():
                 if isinstance(run, dict):
                     for result in run.get('results', []):
                         rule_id = result.get('ruleId', 'Unknown')
+                        locs_arr = result.get('locations', [])
                         
-                        locs_data = result.get('locations', [])
-                        locs = {}
-                        if isinstance(locs_data, list) and len(locs_data) > 0:
-                            first_loc = locs_data[0]
-                            locs = first_loc.get('physicalLocation', {}) if isinstance(first_loc, dict) else {}
-                        elif isinstance(locs_data, dict):
-                            locs = locs_data.get('physicalLocation', {})
-                        
-                        path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
-                        line = locs.get('region', {}).get('startLine', '?')
-                        
-                        fingerprint = f'{rule_id}::{path}::{line}'
-                        if fingerprint not in seen_findings:
-                            seen_findings.add(fingerprint)
+                        is_new_finding = False
+                        if isinstance(locs_arr, list) and len(locs_arr) > 0:
+                            for loc_entry in locs_arr:
+                                if not isinstance(loc_entry, dict): continue
+                                locs = loc_entry.get('physicalLocation', {})
+                                path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
+                                line = locs.get('region', {}).get('startLine', '?')
+                                
+                                fingerprint = f'{rule_id}::{path}::{line}'
+                                if fingerprint not in seen_findings:
+                                    seen_findings.add(fingerprint)
+                                    is_new_finding = True
+                        elif isinstance(locs_arr, dict):
+                            locs = locs_arr.get('physicalLocation', {})
+                            path = locs.get('artifactLocation', {}).get('uri', 'Unknown')
+                            line = locs.get('region', {}).get('startLine', '?')
+                            
+                            fingerprint = f'{rule_id}::{path}::{line}'
+                            if fingerprint not in seen_findings:
+                                seen_findings.add(fingerprint)
+                                is_new_finding = True
+                                
+                        if is_new_finding:
                             res.append(result)
             
             local_cwe_map = {}
@@ -140,7 +151,6 @@ def main():
             full_url = '/'.join(['https://github.com', repo_path, 'pull', pr_num])
             link_md = f'[#{pr_num}]({full_url})'
             
-            # --- FIXED: RENDER CELLS MATCHING THE HARD ENVIRONMENTAL CONTEXT ---
             if scan_type == 'human':
                 table_rows.append(f'| {repo_path} | {link_md} | {lang} | {row_severity_badge} | **{cwe_display}** | {h} | {m} | {l} | {len(res)} ({u_files}) |')
             else:
@@ -165,7 +175,6 @@ def main():
         else:
             out.write('- No distinct CWE records mapped.\n')
             
-        # --- FIXED: CONDITION HEADER MAPPING ENFORCED VIA WORKFLOW ENVIRONMENT VARIABLE ---
         if scan_type == 'human':
             out.write('\n| Repository | PR | Lang | Overall Severity | CWE Discovered | 🔴 H | 🟡 M | 🔵 L | Total (Files) |\n')
             out.write('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n')
