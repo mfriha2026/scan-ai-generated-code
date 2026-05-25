@@ -54,7 +54,6 @@ def main():
             rule_id = res.get('ruleId', 'Unknown')
             locs_arr = res.get('locations', [])
             
-            # --- FIX: TRACK DEDUPLICATION ACROSS ALL SUB-LOCATIONS ---
             is_new_finding = False
             primary_path = "Unknown"
             primary_line = "?"
@@ -85,7 +84,6 @@ def main():
                     is_new_finding = True
 
             if is_new_finding:
-                # Store the primary location references explicitly for row mapping
                 res['_primary_path'] = primary_path
                 res['_primary_line'] = primary_line
                 consolidated_results.append(res)
@@ -120,8 +118,12 @@ def main():
             else:
                 icon_display = "🔵 Low"
             
-            msg = res.get('message', {}).get('text', 'No description').split('\n')[0]
-            summary_md += f"| {icon_display} | **{cdisplay if 'cwe_display' in locals() else cwe_display}** | `{rule_id}` | `{path}:{line}` | {msg} |\n"
+            # --- FIX 2: STRIP DOWN LIST GENERATION TO INLINE FLATTENED STRINGS ---
+            raw_msg = res.get('message', {}).get('text', 'No description')
+            msg = raw_msg.split('\n')[0] if '\n' in raw_msg else raw_msg
+            
+            # --- FIX 1: FIXED CORRUPTED VARIABLE REFERENCE ---
+            summary_md += f"| {icon_display} | **{cwe_display}** | `{rule_id}` | `{path}:{line}` | {msg} |\n"
 
     summary_file = os.environ.get('GITHUB_STEP_SUMMARY', 'summary.md')
     with open(summary_file, 'a') as f:
