@@ -22,10 +22,19 @@ def main():
     vulnerable_count = 0
     cwe_tracker = {}
     
+    # --- DYNAMIC TRIGGER ENGINE ---
+    # Automatically tracks if any incoming payload log belongs to a manual human run
+    is_human_run = False
+
     for f in all_files:
         fname = os.path.basename(f)
         if fname == 'results.sarif' or '--' not in fname: 
             continue
+            
+        # Detect if the baseline artifact contains your human scanner prefix matching rules
+        if fname.startswith('human--'):
+            is_human_run = True
+
         try:
             name_root = fname.replace('.sarif', '')
             parts = name_root.split('--')
@@ -136,7 +145,12 @@ def main():
             full_url = '/'.join(['https://github.com', repo_path, 'pull', pr_num])
             link_md = f'[#{pr_num}]({full_url})'
             
-            table_rows.append(f'| {repo_path} | {link_md} | {agent} | {lang} | {row_severity_badge} | **{cwe_display}** | {h} | {m} | {l} | {len(res)} ({u_files}) |')
+            # --- CONDITION CELL GENERATOR SYSTEM ---
+            if fname.startswith('human--'):
+                # Hides the agent row item if it belongs to a human manual sweep
+                table_rows.append(f'| {repo_path} | {link_md} | {lang} | {row_severity_badge} | **{cwe_display}** | {h} | {m} | {l} | {len(res)} ({u_files}) |')
+            else:
+                table_rows.append(f'| {repo_path} | {link_md} | {agent} | {lang} | {row_severity_badge} | **{cwe_display}** | {h} | {m} | {l} | {len(res)} ({u_files}) |')
         except Exception as e:
             print(f'Error processing {fname}: {e}')
             
@@ -157,8 +171,14 @@ def main():
         else:
             out.write('- No distinct CWE records mapped.\n')
             
-        out.write('\n| Repository | PR | AI Tool | Lang | Overall Severity | CWE Discovered | 🔴 H | 🟡 M | 🔵 L | Total (Files) |\n')
-        out.write('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n')
+        # --- CONDITIONAL COLUMN HEADER BADGE ENGINE ---
+        if is_human_run:
+            out.write('\n| Repository | PR | Lang | Overall Severity | CWE Discovered | 🔴 H | 🟡 M | 🔵 L | Total (Files) |\n')
+            out.write('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n')
+        else:
+            out.write('\n| Repository | PR | AI Tool | Lang | Overall Severity | CWE Discovered | 🔴 H | 🟡 M | 🔵 L | Total (Files) |\n')
+            out.write('| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n')
+            
         for r in sorted(table_rows): 
             out.write(f'{r}\n')
 
