@@ -1,4 +1,4 @@
-name: "Human CodeQL Scan Auditing"
+name: "Human PRs Multi-Language Scanner"
 
 on:
   workflow_dispatch:
@@ -38,7 +38,7 @@ jobs:
     needs: discover
     if:  ${{ needs.discover.outputs.matrix != '' && fromJson(needs.discover.outputs.matrix).include != null }} 
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
     env:
       CODEQL_RAM: 12000
     strategy:
