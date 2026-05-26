@@ -13,7 +13,7 @@ def main():
     # --- CONFIGURATION (TARGET EXTENDED TO 5 RUNS) ---
     INPUT_CSV = "aidev_scan_list.csv"
     MAX_PR_LINES = 1000 
-    SCAN_LIMIT = 5     # Scaled from 5 to 20 for extended diagnostic testing
+    SCAN_LIMIT = 100     # Scaled from 5 to 100 for extended diagnostic testing
     EXCLUDE_REPOS = ["BerriAI/litellm", "elastic/kibana"]
     
     # --- TRACKING ---
