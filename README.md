@@ -6,7 +6,8 @@ First of all, I tested different types of CodeQL scanning queries.
 
 CodeQL has the following queries:
 
-<img width="741" height="567" alt="CodeQL scanning queries" src="https://github.com/user-attachments/assets/ddbd3328-19b5-4801-8487-becaad1fda25" />
+<img width="741" height="567" alt="CodeQL scanning queries" src="https://github.com/user-attachments/assets/2a0ecb2d-f44f-4956-910a-88da4d572f27" />
+
 
 I went with the first option from the table above. I am using CodeQL code-scanning queries (default standard queries). Those queries are highly recommended for their high-precision scanning results. Those queries are highly optimized for production environments. They use vetted security rules that provide an extremely low false-positive rate.
 
@@ -30,5 +31,5 @@ CWE_TOP_25 = \[
 
 In the final summary scan report, I am also reporting the Top 5 CWE found when scanning the PRs.
 
+<img width="1886" height="1061" alt="AI PRs Analysis Summary" src="https://github.com/user-attachments/assets/ae2259ad-5df8-4741-8e1c-df934e0c5785" />
 
-<img width="1886" height="1061" alt="AI PRs Analysis Summary" src="https://github.com/user-attachments/assets/3356d5f5-d085-4605-ae3e-ff3cbf175572" />
