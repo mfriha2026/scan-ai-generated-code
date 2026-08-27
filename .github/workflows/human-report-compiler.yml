@@ -1,0 +1,79 @@
+name: "📊 Human HTML Report Deployer"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build-report:
+    name: Compile Human Master Dashboard
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code Scripts from Main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Python environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # 🎯 STEP 1: RESTORE SEPARATE HUMAN DATABASE FILE LEDGER BEFORE COMPILING
+      - name: 📁 Restore Shared Human Database Branch File Ledger
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          mkdir -p all-results
+          # Fetch and pull down the persistent history tracking records from the database branch
+          git fetch origin database:database || true
+          git checkout database -- all-results/human_accumulated_database.json 2>/dev/null || echo "🌱 First human runtime footprint initialized."
+
+      # 🎯 STEP 2: COMPILE THE DASHBOARD GENERATOR PASSING THE HUMAN SYSTEM VARIABLE
+      - name: Compile HTML Human Dashboard
+        env:
+          GH_TOKEN: ${{ secrets.GLOBAL_SCAN_PAT }}
+          SCAN_TYPE: "human"    # 👈 Tells the Python script to target your human database!
+        run: |
+          mkdir -p docs
+          python scripts/generate_interactive_dashboard.py
+
+      - name: 📦 Archive Interactive HTML Report Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-human-interactive-dashboard
+          path: docs/GLOBAL_INTERACTIVE_REPORT.html
+          retention-days: 7
+
+      # 🎯 STEP 3: COMMIT AND PUSH THE INTERACTIVE DASHBOARD HTML TO YOUR WEBPAGE
+      - name: 🚀 Commit and Push Human HTML Page back to Database Branch
+        if: success()
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@://github.com"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          
+          # 1. Copy your fresh HTML dashboard file into a safe temporary space outside the Git tree
+          mkdir -p /tmp/html-stash
+          cp docs/GLOBAL_INTERACTIVE_REPORT.html /tmp/html-stash/GLOBAL_INTERACTIVE_REPORT.html 2>/dev/null || cp GLOBAL_INTERACTIVE_REPORT.html /tmp/html-stash/GLOBAL_INTERACTIVE_REPORT.html || true
+          
+          # 2. Wipe the local workspace copy to completely clear the untracked file blockade
+          rm -f docs/GLOBAL_INTERACTIVE_REPORT.html ./GLOBAL_INTERACTIVE_REPORT.html
+          
+          # 3. Switch branches cleanly and pull down the latest tracking indices
+          git fetch origin database
+          git checkout database || git checkout -b database origin/database
+          git pull origin database || true
+          
+          # 4. Restore your fresh HTML dashboard file back into the active tracking workspace under a separate name to protect your AI dashboard page!
+          mkdir -p docs
+          cp /tmp/html-stash/GLOBAL_INTERACTIVE_REPORT.html docs/HUMAN_INTERACTIVE_REPORT.html
+          cp /tmp/html-stash/GLOBAL_INTERACTIVE_REPORT.html ./HUMAN_INTERACTIVE_REPORT.html 2>/dev/null || true
+          
+          # 5. Stage, commit, and push directly to your remote repository branch interface
+          git add docs/HUMAN_INTERACTIVE_REPORT.html || git add HUMAN_INTERACTIVE_REPORT.html
+          git commit -m "docs: publish consolidated master human interactive html dashboard" || true
+          git push origin database
