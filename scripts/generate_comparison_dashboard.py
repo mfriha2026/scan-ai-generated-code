@@ -2,7 +2,7 @@ import os
 import json
 
 def main():
-    output_path = "docs/THESIS_COMPARATIVE_ANALYSIS_ver2.html"
+    output_path = "docs/THESIS_COMPARATIVE_ANALYSIS.html"
     ai_db_path = "all-results/accumulated_database.json"
     human_db_path = "all-results/human_accumulated_database.json"
 
