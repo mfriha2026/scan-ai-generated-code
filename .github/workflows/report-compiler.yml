@@ -1,0 +1,77 @@
+name: "📊 Universal HTML Report Deployer"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build-report:
+    name: Compile Master Dashboard
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code Scripts from Main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Python environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # 🎯 STEP 2: RESTORE SHARED DATABASE FILE LEDGER BEFORE COMPILING
+      - name: 📁 Restore Shared Database Branch File Ledger
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          mkdir -p all-results
+          # Fetch and pull down the persistent history tracking records from the database branch
+          git fetch origin database:database || true
+          git checkout database -- all-results/accumulated_database.json 2>/dev/null || echo "🌱 First runtime footprint initialized."
+
+      - name: Compile HTML Master Dashboard
+        env:
+          GH_TOKEN: ${{ secrets.GLOBAL_SCAN_PAT }}
+        run: |
+          mkdir -p docs
+          python scripts/generate_interactive_dashboard.py
+
+      - name: 📦 Archive Interactive HTML Report Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-interactive-dashboard
+          path: docs/GLOBAL_INTERACTIVE_REPORT.html
+          retention-days: 7
+
+      # 🎯 STEP 3: COMMIT AND PUSH THE INTERACTIVE DASHBOARD HTML TO YOUR WEBPAGE
+      - name: 🚀 Commit and Push Final HTML Page back to Database Branch
+        if: success()
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@://github.com"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          
+          # 🎯 STEP 1: Copy your fresh HTML dashboard file into a safe temporary space outside the Git tree
+          mkdir -p /tmp/html-stash
+          cp docs/GLOBAL_INTERACTIVE_REPORT.html /tmp/html-stash/GLOBAL_INTERACTIVE_REPORT.html 2>/dev/null || cp GLOBAL_INTERACTIVE_REPORT.html /tmp/html-stash/GLOBAL_INTERACTIVE_REPORT.html || true
+          
+          # 🎯 STEP 2: Wipe the local workspace copy to completely clear the untracked file blockade
+          rm -f docs/GLOBAL_INTERACTIVE_REPORT.html ./GLOBAL_INTERACTIVE_REPORT.html
+          
+          # 🎯 STEP 3: Switch branches cleanly and pull down the latest tracking indices
+          git fetch origin database
+          git checkout database || git checkout -b database origin/database
+          git pull origin database || true
+          
+          # 🎯 STEP 4: Restore your fresh HTML dashboard file back into the active tracking workspace
+          mkdir -p docs
+          cp /tmp/html-stash/GLOBAL_INTERACTIVE_REPORT.html docs/GLOBAL_INTERACTIVE_REPORT.html
+          cp /tmp/html-stash/GLOBAL_INTERACTIVE_REPORT.html ./GLOBAL_INTERACTIVE_REPORT.html 2>/dev/null || true
+          
+          # 🎯 STEP 5: Stage, commit, and push directly to your remote repository branch interface
+          git add docs/GLOBAL_INTERACTIVE_REPORT.html || git add GLOBAL_INTERACTIVE_REPORT.html
+          git commit -m "docs: publish consolidated master interactive html dashboard" || true
+          git push origin database
