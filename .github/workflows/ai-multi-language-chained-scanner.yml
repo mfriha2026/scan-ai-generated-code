@@ -1,0 +1,282 @@
+name: "AI Multi-Language Chained Scanner"
+
+on:
+  workflow_dispatch:
+    inputs:
+      offset:
+        description: 'CSV Line Data Offset Pointer'
+        required: false
+        default: '0'
+      extracted_count:
+        description: 'Total PRs successfully extracted'
+        required: false
+        default: '0'
+      master_run_id:
+        description: 'The Parent Run ID that ties this entire chain execution loop together'
+        required: false
+        default: ''
+  repository_dispatch:
+    types: [Scan_Next_Chained_Batch]
+
+env:
+  CODEQL_ACTION_EXPERIMENTAL_FEATURES: "false"
+  CODEQL_ACTION_DISABLE_DEPRECATION_WARNINGS: "true"
+  CODEQL_ACTION_IS_PERFORMANCE_TESTING: "true"
+
+permissions:
+  contents: write
+  security-events: write
+  actions: write
+
+jobs:
+  discover:
+    name: Find AI PRs
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix_data }}
+      next_offset: ${{ steps.detect.outputs.next_offset }}
+      has_more_data: ${{ steps.detect.outputs.has_more_data }}
+      total_extracted: ${{ steps.detect.outputs.total_extracted }}
+      # 🎯 Custom master_run_id tracker: Defaults to active run ID if this is Batch 1
+      master_run_id: ${{ github.event.inputs.master_run_id || github.event.client_payload.master_run_id || github.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
+          clean: true
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Fetch Active Run Chain Deduplication Memory
+        run: |
+          mkdir -p all-results
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git fetch origin database:database || true
+          git checkout database -- all-results/accumulated_database.json 2>/dev/null || echo "🌱 First batch pass context initialized. Starting with a fresh memory map!"
+
+      - name: Discover Scan Matrix
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GLOBAL_SCAN_PAT }}
+          CHUNK_OFFSET: ${{ github.event.inputs.offset || github.event.client_payload.offset || '0' }}
+          CURRENT_EXTRACTED: ${{ github.event.inputs.extracted_count || github.event.client_payload.extracted_count || '0' }}
+        run: |
+          pip install pandas
+          python scripts/ai-scanner.py
+          
+  analyze:
+    name: Scan ${{ matrix.repo_name }} (#${{ matrix.pr_num }}) - [${{ matrix.language }}]
+    needs: discover
+    if: ${{ needs.discover.outputs.matrix != '' && fromJson(needs.discover.outputs.matrix).include != null && toJson(fromJson(needs.discover.outputs.matrix).include) != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CODEQL_RAM: 12000
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+    
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          clean: true
+      
+      - name: Prepare Workspace and Checkout PR
+        id: pr_checkout
+        env:
+          GH_TOKEN: ${{ secrets.GLOBAL_SCAN_PAT }}
+          GIT_LFS_SKIP_SMUDGE: 1
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git reset --hard HEAD || true
+          git clean -xdf || true
+          
+          git config --global filter.lfs.smudge "git-lfs smudge --skip -- %f"
+          git config --global filter.lfs.process "git-lfs filter-process --skip"
+          mkdir -p /tmp/scripts && cp scripts/* /tmp/scripts/ 2>/dev/null || true
+          rm -rf ./*
+          
+          gh pr checkout ${{ matrix.pr_num }} --repo ${{ matrix.repo_name }} --force
+          mkdir -p scripts && cp /tmp/scripts/* scripts/ 2>/dev/null || true
+          
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          db-location: ${{ runner.temp }}/codeql_db
+          trap-caching: false
+          queries: code-scanning
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        continue-on-error: true
+        with:
+          category: "/pr:${{ matrix.category_name }}"
+          output: sarif-results
+          upload: false
+          upload-database: false
+          wait-for-processing: false 
+          threads: 2
+          # 🎯 THE FIX: Forces CodeQL to embed detailed code fragments and full CWE metadata tags
+          add-snippets: true
+          
+      - name: Create Summary
+        if: always()
+        run: |
+          SAFE_REPO=$(echo "${{ matrix.repo_name }}" | sed 's/\//_SLASH_/g')
+          SAFE_AGENT=$(echo "${{ matrix.agent_name }}" | sed 's/ /_/g')
+          mkdir -p scripts && cp -r /tmp/scripts/* scripts/ 2>/dev/null || true
+          LIVE_LOC=$(gh pr view ${{ matrix.pr_num }} --repo ${{ matrix.repo_name }} --json additions,deletions --jq '.additions + .deletions' 2>/dev/null || echo "1")
+          if [ -z "$LIVE_LOC" ] || [ "$LIVE_LOC" = "0" ]; then LIVE_LOC="1"; fi
+          
+          export PR_LOC=$LIVE_LOC
+          export PR_REPO="${{ matrix.repo_name }}"
+          export PR_NUM="${{ matrix.pr_num }}"
+          
+          if [ -d "sarif-results" ] && [ "$(ls -A sarif-results/*.sarif 2>/dev/null)" ]; then
+            cp sarif-results/*.sarif ./results.sarif 2>/dev/null || true
+            
+            # 🎯 FIX: Appended --${{ matrix.repo_stars }} to the end of your asset filenames!
+            cp sarif-results/*.sarif "./${SAFE_REPO}--${{ matrix.pr_num }}--${{ matrix.language }}--${SAFE_AGENT}--${LIVE_LOC}--${{ matrix.repo_stars }}.sarif" 2>/dev/null || true
+            echo "success" > "./${SAFE_REPO}--${{ matrix.pr_num }}--${{ matrix.language }}--${SAFE_AGENT}--${LIVE_LOC}--${{ matrix.repo_stars }}.success"
+            python scripts/parse-results.py || true
+            
+            if [ -f "sarif-results/summary.json" ]; then
+              cp sarif-results/summary.json "./${SAFE_REPO}--${{ matrix.pr_num }}--${{ matrix.language }}--${SAFE_AGENT}--${LIVE_LOC}--${{ matrix.repo_stars }}.json"
+            else
+              echo '{"high": 0, "medium": 0, "low": 0, "total_issues": 0, "files_changed": 1, "cwes_discovered": []}' > "./${SAFE_REPO}--${{ matrix.pr_num }}--${{ matrix.language }}--${SAFE_AGENT}--${LIVE_LOC}--${{ matrix.repo_stars }}.json"
+            fi
+          else
+            # 🎯 FIX: Appended --${{ matrix.repo_stars }} to the end of your failure filenames!
+            echo "failed" > "./${SAFE_REPO}--${{ matrix.pr_num }}--${{ matrix.language }}--${SAFE_AGENT}--${LIVE_LOC}--${{ matrix.repo_stars }}.failed"
+            echo '{"high": 0, "medium": 0, "low": 0, "total_issues": 0, "files_changed": 0, "cwes_discovered": []}' > "./${SAFE_REPO}--${{ matrix.pr_num }}--${{ matrix.language }}--${SAFE_AGENT}--${LIVE_LOC}--${{ matrix.repo_stars }}.json"
+          fi          
+        env:
+          GH_TOKEN: ${{ secrets.GLOBAL_SCAN_PAT }}
+
+      - name: Save Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          # 🎯 STAMP THE KEY: Injects the unified chain tracking identifier straight into the package name!
+          name: sarif-${{ needs.discover.outputs.master_run_id }}-${{ matrix.category_name }}
+          path: |
+            *.sarif
+            *.success
+            *.failed
+            *.json
+          retention-days: 1
+
+  report:
+    name: Consolidate Final Report
+    needs: [discover, analyze]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          clean: true
+
+      - name: Restore Shared Database State
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git reset --hard HEAD || true
+          git clean -xdf || true
+          
+          mkdir -p all-results
+          git fetch origin database:database || true
+          git checkout database -- all-results/accumulated_database.json 2>/dev/null || echo "First run initialization: starting a fresh database file."
+
+      - name: Download Active Run Chunks
+        env:
+          GH_TOKEN: ${{ secrets.GLOBAL_SCAN_PAT }}
+        run: |
+          gh run download "${{ github.run_id }}" --pattern "sarif-*" --dir "all-results" || true
+
+      - name: Generate Consolidated Summary Table
+        env:
+          MATRIX_JSON: ${{ needs.discover.outputs.matrix }}
+          SCAN_TYPE: "automated"
+          GH_TOKEN: ${{ secrets.GLOBAL_SCAN_PAT }} 
+          #CHUNK_OFFSET: ${{ github.event.inputs.offset || '0' }}
+          # 🎯 PASS THE POINTER: Tells the Python script exactly which batch chunk is running!
+          CHUNK_OFFSET: ${{ github.event.inputs.offset || github.event.client_payload.offset || '0' }}
+        run: |
+          python scripts/consolidate-report.py
+
+      - name: Stream Consolidated Reports Safely
+        if: always()
+        run: |
+          echo "📝 Appending report header details..."
+          if [ -f "report-chunks/header.md" ]; then
+            cat report-chunks/header.md >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ -d "report-chunks" ]; then
+            for file in $(ls report-chunks/table_part_*.md 2>/dev/null | sort -V); do
+              echo "📝 Appending $file to workflow dashboard stream..."
+              cat "$file" >> $GITHUB_STEP_SUMMARY
+              echo -e "\n\n" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
+          
+      - name: Save Updated State to Shared Database Branch
+        if: success()
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@://github.com"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          
+          # STEP 1: Stash your database file safely in memory
+          mkdir -p /tmp/db-stash
+          cp all-results/accumulated_database.json /tmp/db-stash/accumulated_database.json
+          
+          # STEP 2: Force a clean branch switch to 'database' and pull latest states
+          git fetch origin database
+          git checkout database || git checkout -b database origin/database
+          git pull origin database || true
+          
+          # Clear the old file path to eliminate caching lockups entirely
+          rm -f all-results/accumulated_database.json
+          
+          # STEP 3: Bring your true, updated database file back from memory
+          mkdir -p all-results
+          cp /tmp/db-stash/accumulated_database.json all-results/accumulated_database.json
+          
+          # 🎯 THE TIMING FIX: Give the disk 3 seconds to fully flush and write to the file system!
+          sleep 20
+          
+          # STEP 4: Stage, commit, and push directly to the remote branch
+          git add all-results/accumulated_database.json
+          
+          # 🎯 THE SECURITY FIX: Removed '|| true' from the push sequence so a failed save halts the loop chain!
+          git commit -m "database: append cumulative scans [Offset ${{ github.event.inputs.offset || '0' }}]" || echo "No tracked changes detected."
+          git push origin database
+
+  chain:
+    name: Loop Dispatch Gateway
+    needs: [discover, report]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chain Next Chunk Automatically
+        if: ${{ needs.discover.outputs.has_more_data == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GLOBAL_SCAN_PAT }}
+          NEXT_OFFSET: ${{ needs.discover.outputs.next_offset }}
+          TOTAL_EXTRACTED: ${{ needs.discover.outputs.total_extracted }}
+          MASTER_ID: ${{ needs.discover.outputs.master_run_id }}
+        run: |
+          echo "🔄 Loop transition verified. Data remains in CSV input queue."
+          echo "Advancing AI Multi-Language Chained Scanner to next chunk offset: $NEXT_OFFSET"
+          
+          gh api repos/${{ github.repository }}/dispatches \
+            -F event_type="Scan_Next_Chained_Batch" \
+            -F client_payload[offset]="$NEXT_OFFSET" \
+            -F client_payload[extracted_count]="$TOTAL_EXTRACTED" \
+            -F client_payload[master_run_id]="$MASTER_ID"
