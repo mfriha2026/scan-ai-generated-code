@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Empirical Code Security Evaluation: AI vs. Human Pull Requests Synthesis</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f6f8fa;
+            color: #24292f;
+            padding: 40px 20px;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            max-width: 1000px;
+            width: 100%;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 1px solid #d0d7de;
+            padding-bottom: 20px;
+        }
+        h1 {
+            font-size: 26px;
+            margin: 0 0 8px 0;
+            color: #24292f;
+        }
+        p.subtitle {
+            font-size: 15px;
+            color: #57606a;
+            margin: 0;
+        }
+        .report-list {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+        .row-item {
+            background: #ffffff;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: flex-start;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+            gap: 12px;
+        }
+        @media (min-width: 768px) {
+            .row-item {
+                flex-direction: row;
+                align-items: center;
+                gap: 30px;
+            }
+        }
+        .row-item:hover {
+            transform: translateX(4px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        }
+        .comparative-row { border-left: 6px solid #6f42c1; } /* Purple accent */
+        .agent-row { border-left: 6px solid #0969da; }       /* Blue accent */
+        .human-row { border-left: 6px solid #2da44e; }       /* Green accent */
+        
+        .content-block {
+            flex-grow: 1;
+        }
+        .report-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin: 0 0 8px 0;
+            color: #24292f;
+        }
+        .description {
+            font-size: 13.5px;
+            line-height: 1.5;
+            color: #57606a;
+            margin: 0;
+        }
+        .btn-wrapper {
+            flex-shrink: 0;
+            width: 100%;
+        }
+        @media (min-width: 768px) {
+            .btn-wrapper {
+                width: auto;
+            }
+        }
+        .btn {
+            display: block;
+            text-align: center;
+            text-decoration: none;
+            font-size: 13.5px;
+            font-weight: 600;
+            padding: 10px 20px;
+            border-radius: 6px;
+            transition: background-color 0.2s;
+            white-space: nowrap;
+        }
+        .btn-comparative {
+            background-color: #6f42c1;
+            color: #ffffff;
+        }
+        .btn-comparative:hover { background-color: #5a30a3; }
+        
+        .btn-agent {
+            background-color: #0969da;
+            color: #ffffff;
+        }
+        .btn-agent:hover { background-color: #0c56b3; }
+        
+        .btn-human {
+            background-color: #2da44e;
+            color: #ffffff;
+        }
+        .btn-human:hover { background-color: #24873f; }
+
+        footer {
+            text-align: center;
+            font-size: 12px;
+            color: #57606a;
+            margin-top: 30px;
+            border-top: 1px solid #d0d7de;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>📊 Empirical Code Security Evaluation: AI vs. Human Pull Requests Synthesis</h1>
+        </header>
+
+        <div class="report-list">
+            
+            <!-- ⚖️ Horizontal Row 1: Thesis Empirical Analysis -->
+            <div class="row-item comparative-row">
+                <div class="content-block">
+                    <div class="report-title">Thesis Empirical Analysis: AI vs Human Code Security Summary</div>
+                    <p class="description">
+                        A consolidated, side-by-side empirical overview synthesizing the security scanning metrics of both AI-generated and human-authored pull requests. This comparative matrix establishes an objective baseline for risk evaluation, quantifying security posture variances through normalized data dimensions including defect density, lifecycle progression stages, and cross-track alert dismissal rates.
+                    </p>
+                </div>
+                <div class="btn-wrapper">
+                    <a href="docs\THESIS_COMPARATIVE_ANALYSIS.html" class="btn btn-comparative">View Global Summary</a>
+                </div>
+            </div>
+
+            <!-- 🤖 Horizontal Row 2: AI-Generated Pull Requests -->
+            <div class="row-item agent-row">
+                <div class="content-block">
+                    <div class="report-title">AI-Generated Pull Requests - Consolidated Summary Report</div>
+                    <p class="description">
+                        A comprehensive tracking ledger mapping the CodeQL security analysis of 1,000 AI agent pull requests from the AIDev-Pop dataset. The report aggregates system-wide metrics, including total lines of code scanned, vulnerability rates, and lifecycle statuses, alongside detailed pull request tracking items (repository names, star counts, branch statuses, generating AI models, and target programming languages). Featuring a dynamic filtering matrix, the table isolates security deficiencies by pushing active CWE findings to the top of the interface. An integrated 'View Details' inspection panel exposes granular defect telemetry, compiling severity classifications, triggering CodeQL rules, exact file paths, line locations, and formal vulnerability summaries.
+                    </p>
+                </div>
+                <div class="btn-wrapper">
+                    <a href="docs\GLOBAL_AGENT_INTERACTIVE_REPORT.html" class="btn btn-agent">Open AI Agent Ledger</a>
+                </div>
+            </div>
+
+            <!-- 👨‍💻 Horizontal Row 3: Human Pull Requests -->
+            <div class="row-item human-row">
+                <div class="content-block">
+                    <div class="report-title">Human Pull Requests - Consolidated Summary Report</div>
+                    <p class="description">
+                        A tracking ledger dedicated to the CodeQL security analysis of 1,000 human-generated pull requests extracted from the same AIDev-Pop dataset. To build a robust, empirically sound comparative analysis, this report mirrors the identical layout metrics utilized in the AI Agent pull request track, monitoring total lines of code scanned, vulnerability rates, and operational lifecycle statuses. It catalogs detailed repository metadata, language distributions, and file transformations, pushing active CWE discoveries to the top via a dynamic sorting matrix. An integrated 'View Details' panel exposes identical granular telemetry—including severity labels, specific triggering CodeQL rules, exact file coordinates, and line positions—ensuring an objective, 1:1 framework to isolate code security variations between AI agents and human authors.
+                    </p>
+                </div>
+                <div class="btn-wrapper">
+                    <a href="docs\GLOBAL_HUMAN_INTERACTIVE_REPORT.html" class="btn btn-human">Open Human Ledger</a>
+                </div>
+            </div>
+
+        </div>
+
+        <footer>
+            Empirical Code Security Framework &bull; Repository Evaluation Index Asset &bull; 2026 Academic Distribution
+        </footer>
+    </div>
+
+</body>
+</html>
