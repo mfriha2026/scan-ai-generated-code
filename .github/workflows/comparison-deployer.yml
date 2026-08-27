@@ -1,0 +1,72 @@
+name: "📊 Thesis Comparison Dashboard Deployer"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-comparison:
+    name: Compile Core Comparison Matrix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # Pull down BOTH database files from your persistent branch tracker
+      - name: 📁 Restore AI and Human Ledgers
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          mkdir -p all-results
+          git fetch origin database:database || true
+          git checkout database -- all-results/accumulated_database.json 2>/dev/null || true
+          git checkout database -- all-results/human_accumulated_database.json 2>/dev/null || true
+
+      - name: Run Comparison Aggregator
+        run: |
+          python scripts/generate_comparison_dashboard.py
+
+      # Archive the report so you can download it directly as a ZIP artifact
+      - name: 📦 Archive Thesis Comparative Report Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-thesis-comparative-dashboard
+          path: docs/THESIS_COMPARATIVE_ANALYSIS.html
+          retention-days: 7
+
+      # 🚀 FIXED: Clears untracked files from the tree to prevent branch checkout blockades
+      - name: 🚀 Commit Page to Database Branch
+        if: success()
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@://github.com"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          
+          # STEP 1: Stash your fresh report safely in a temporary memory directory
+          mkdir -p /tmp/stash
+          cp docs/THESIS_COMPARATIVE_ANALYSIS.html /tmp/stash/THESIS_COMPARATIVE_ANALYSIS.html
+          
+          # 🎯 THE FIX: Wipe the local file from the active working tree so Git can checkout cleanly
+          rm -f docs/THESIS_COMPARATIVE_ANALYSIS.html
+          
+          # STEP 2: Switch branches reliably
+          git fetch origin database
+          git checkout database || git checkout -b database origin/database || true
+          git pull origin database || true
+          
+          # STEP 3: Bring the file back from memory into the database branch tracking workspace
+          mkdir -p docs
+          cp /tmp/stash/THESIS_COMPARATIVE_ANALYSIS.html docs/THESIS_COMPARATIVE_ANALYSIS.html
+          
+          # STEP 4: Stage, commit, and push changes directly
+          git add docs/THESIS_COMPARATIVE_ANALYSIS.html
+          git commit -m "docs: generate master side-by-side comparative dashboard" || echo "No changes to commit"
+          git push origin database
