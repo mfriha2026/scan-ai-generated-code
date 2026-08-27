@@ -7,18 +7,14 @@ def extract_human_data():
         pr_df = pd.read_parquet("hf://datasets/hao-li/AIDev/human_pull_request.parquet")
         repo_df = pd.read_parquet("hf://datasets/hao-li/AIDev/repository.parquet")
 
-        # FIX: The repository table uses 'url', while the human_pr table uses 'repo_url'
-        # Let's verify and join
         left_key = 'repo_url'
         right_key = 'url' 
 
         if left_key not in pr_df.columns or right_key not in repo_df.columns:
             print(f"Column mismatch!")
-            print(f"PR Columns: {pr_df.columns.tolist()}")
-            print(f"Repo Columns: {repo_df.columns.tolist()}")
             sys.exit(1)
 
-        print(f"Joining tables on PR.{left_key} and Repo.{right_key}...")
+        print("Joining tables on PR.repo_url and Repo.url...")
         merged_df = pd.merge(
             pr_df, 
             repo_df, 
@@ -29,13 +25,12 @@ def extract_human_data():
         )
 
         if merged_df.empty:
-            print("Error: Merge resulted in empty dataset. The URLs in both tables might not match format.")
+            print("Error: Merge resulted in empty dataset.")
             sys.exit(1)
 
-        # Filter criteria
         supported_langs = ['Python', 'JavaScript', 'TypeScript', 'Java', 'Ruby']
         filtered_df = merged_df[
-            (merged_df['stars'] > 100) &
+            (merged_df['stars'] > 500) &
             (merged_df['language'].isin(supported_langs))
         ].copy()
 
@@ -47,10 +42,11 @@ def extract_human_data():
         filtered_df['created_at'] = pd.to_datetime(filtered_df['created_at'])
         filtered_df = filtered_df.sort_values(by='created_at', ascending=False)
         
-        # 'full_name' is usually the repo name (e.g., 'owner/repo')
-        scan_list = filtered_df.head(500)[['full_name', 'number', 'title', 'language']].rename(columns={
+        # 🚀 LOC COLUMN REMOVED: Exporting only verified, meaningful properties
+        scan_list = filtered_df.head(10000)[['full_name', 'number', 'title', 'language', 'stars']].rename(columns={
             'full_name': 'repo_name',
-            'language': 'primary_language'
+            'language': 'primary_language',
+            'stars': 'repo_stars'
         })
         
         scan_list['agent_name'] = 'human'
