@@ -20,7 +20,7 @@ To isolate vulnerabilities introduced exclusively by the Pull Request (PR) modif
 
 For a comprehensive overview of the analysis architecture, the complete scanning methodology is detailed in the accompanying [Security Pipeline and Dashboard Specification](./security-pipeline-and-dashboard.md).
 
-To facilitate real-time telemetry inspection and streamline cross-cohort evaluations, dedicated analytical dashboards were engineered to display the security outputs of each individual track side by side. Furthermore, a centralized global comparison view was developed, aggregating all foundational security metrics into a single interface to expose macro-level vulnerability trends. The entry point to these visualization panels can be accessed via the primary [Dashboard Interface Platform](https://sammy-uno.github.io/scan-ai-generated-code/).
+To facilitate real-time telemetry inspection and streamline cross-cohort evaluations, dedicated analytical dashboards were engineered to display the security outputs of each individual track side by side. Furthermore, a centralized global comparison view was developed, aggregating all foundational security metrics into a single interface to expose macro-level vulnerability trends. The entry point to these visualization panels can be accessed via the primary [Dashboard Interface Platform](https://mfriha2026.github.io/scan-ai-generated-code/).
 
 ## 📊 System Interface Visualizations
 
