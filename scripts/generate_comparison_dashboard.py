@@ -25,7 +25,6 @@ def main():
     if os.path.exists(human_db_path):
         with open(human_db_path, "r", encoding="utf-8") as f:
             human_data = json.load(f)
-
     # --- AI CALCULATIONS ---
     total_ai_prs = len(ai_data)
     vulnerable_ai_prs = sum(1 for x in ai_data if x.get('has_issues_bool', False))
@@ -78,6 +77,7 @@ def main():
                 ai_cwe_by_severity[target_sev][cwe].add(vuln_title)
 
     ai_cwe_breadth = len(ai_all_unique)
+
     # --- HUMAN CALCULATIONS ---
     total_human_prs = len(human_data)
     vulnerable_human_prs = sum(1 for x in human_data if x.get('has_issues_bool', False))
@@ -130,7 +130,6 @@ def main():
                 human_cwe_by_severity[target_sev][cwe].add(vuln_title)
 
     human_cwe_breadth = len(human_all_unique)
-    # --- GENERATE NESTED HTML SUB-LISTS WITH UNIFIED SEVERITY TABLES ---
     # 🏛️ OFFICIAL MITRE CORP. ARCHITECTURAL NOMENCLATURE TITLES (Source: https://mitre.org)
     CWE_TITLES = {
         'CWE-020': 'Improper Input Validation',
@@ -177,7 +176,6 @@ def main():
         'CWE-918': "Server-Side Request Forgery (SSRF)",        
         'CWE-1333': "Inefficient Regular Expression Complexity ('Regular Expression Denial of Service - ReDoS')"
     }
-
     # 🤖 GENERATE UNIFIED TABLE FOR AI TRACK
     ai_has_content = any(ai_cwe_by_severity.get(s) for s in ["High", "Medium"])
     if ai_has_content:
@@ -186,8 +184,8 @@ def main():
             <table style='width:100%; border-collapse:collapse; text-align:left; font-size:12px; table-layout:fixed;'>
                 <thead>
                     <tr style='background:#f6f8fa; border-bottom:1px solid #d0d7de; color:#57606a; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.5px;'>
-                        <th style='width:10%; padding:8px 10px; border-right:1px solid #d0d7de;'>CWE ID</th>
-                        <th style='width:50%; padding:8px 10px; border-right:1px solid #d0d7de;'>Architectural Nomenclature</th>
+                        <th style='width:15%; padding:8px 10px; border-right:1px solid #d0d7de;'>CWE ID</th>
+                        <th style='width:45%; padding:8px 10px; border-right:1px solid #d0d7de;'>Architectural Nomenclature</th>
                         <th style='width:40%; padding:8px 10px; text-align:right;'>Triggering CodeQL Rules</th>
                     </tr>
                 </thead>
@@ -203,22 +201,23 @@ def main():
                     </td>
                 </tr>
                 """
-                badge_style = "background-color: #ffeef0; color: #cf222e; border: 1px solid rgba(207, 34, 46, 0.4);" if sev_name == "High" else "background-color: #fff8e1; color: #bf8700; border: 1px solid rgba(191, 135, 0, 0.4);"
+                badge_style = "background-color: #ffcccc; color: #990000; border: 1px solid #ff6666;" if sev_name == "High" else "background-color: #ffe699; color: #805c00; border: 1px solid #ffcc33;"
                 
                 for code, desc_set in sorted(cwe_dict.items()):
-                    rule_badges = "".join([f"<span style='background:#f6f8fa; color:#57606a; border:1px solid #d0d7de; border-radius:3px; padding:3px 6px; margin:2px; font-family:monospace; font-size:11px; display:inline-block; white-space:nowrap;'>{r.strip()}</span>" for r in desc_set])
+                    # Match exact typography rules of Architectural Nomenclature column
+                    rule_badges = ", ".join([f"<span style='color:#24292f; font-weight:bold; font-size:12px; line-height:1.4;'>{r.strip()}</span>" for r in desc_set])
                     title_string = CWE_TITLES.get(code, "Unclassified Architectural Weakness")
                     
                     ai_cwe_html_list += f"""
                     <tr style='border-bottom:1px solid #d0d7de;'>
-                        <td style='width:10%; padding:12px 10px; border-right:1px solid #d0d7de; vertical-align:middle; background:#ffffff; overflow:hidden;'>
+                        <td style='width:15%; padding:12px 10px; border-right:1px solid #d0d7de; vertical-align:middle; background:#ffffff; overflow:hidden;'>
                             <code style='{badge_style} padding:4px 6px; border-radius:4px; font-weight:bold; font-size:11px; font-family:monospace; display:inline-block; white-space:nowrap;'>{code}</code>
                         </td>
-                        <td style='width:50%; padding:12px 10px; border-right:1px solid #d0d7de; color:#24292f; font-weight:500; line-height:1.4; vertical-align:middle; background:#ffffff; word-wrap:break-word;'>
+                        <td style='width:45%; padding:12px 10px; border-right:1px solid #d0d7de; color:#24292f; font-weight:bold; line-height:1.4; vertical-align:middle; background:#ffffff; word-wrap:break-word;'>
                             {title_string}
                         </td>
-                        <td style='width:40%; padding:12px 10px; text-align:right; vertical-align:middle; background:#ffffff;'>
-                            <div style='display:flex; flex-wrap:wrap; justify-content:flex-end; gap:2px;'>{rule_badges}</div>
+                        <td style='width:40%; padding:12px 10px; text-align:right; vertical-align:middle; background:#ffffff; word-wrap:break-word;'>
+                            {rule_badges}
                         </td>
                     </tr>"""
         ai_cwe_html_list += "</tbody></table></div>"
@@ -233,8 +232,8 @@ def main():
             <table style='width:100%; border-collapse:collapse; text-align:left; font-size:12px; table-layout:fixed;'>
                 <thead>
                     <tr style='background:#f6f8fa; border-bottom:1px solid #d0d7de; color:#57606a; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.5px;'>
-                        <th style='width:10%; padding:8px 10px; border-right:1px solid #d0d7de;'>CWE ID</th>
-                        <th style='width:50%; padding:8px 10px; border-right:1px solid #d0d7de;'>Architectural Nomenclature</th>
+                        <th style='width:15%; padding:8px 10px; border-right:1px solid #d0d7de;'>CWE ID</th>
+                        <th style='width:45%; padding:8px 10px; border-right:1px solid #d0d7de;'>Architectural Nomenclature</th>
                         <th style='width:40%; padding:8px 10px; text-align:right;'>Triggering CodeQL Rules</th>
                     </tr>
                 </thead>
@@ -250,27 +249,29 @@ def main():
                     </td>
                 </tr>
                 """
-                badge_style = "background-color: #ffeef0; color: #cf222e; border: 1px solid rgba(207, 34, 46, 0.4);" if sev_name == "High" else "background-color: #fff8e1; color: #bf8700; border: 1px solid rgba(191, 135, 0, 0.4);"
+                badge_style = "background-color: #ffcccc; color: #990000; border: 1px solid #ff6666;" if sev_name == "High" else "background-color: #ffe699; color: #805c00; border: 1px solid #ffcc33;"
                 
                 for code, desc_set in sorted(cwe_dict.items()):
-                    rule_badges = "".join([f"<span style='background:#f6f8fa; color:#57606a; border:1px solid #d0d7de; border-radius:3px; padding:3px 6px; margin:2px; font-family:monospace; font-size:11px; display:inline-block; white-space:nowrap;'>{r.strip()}</span>" for r in desc_set])
+                    # Match exact typography rules of Architectural Nomenclature column
+                    rule_badges = ", ".join([f"<span style='color:#24292f; font-weight:bold; font-size:12px; line-height:1.4;'>{r.strip()}</span>" for r in desc_set])
                     title_string = CWE_TITLES.get(code, "Unclassified Architectural Weakness")
                     
                     human_cwe_html_list += f"""
                     <tr style='border-bottom:1px solid #d0d7de;'>
-                        <td style='width:10%; padding:12px 10px; border-right:1px solid #d0d7de; vertical-align:middle; background:#ffffff; overflow:hidden;'>
+                        <td style='width:15%; padding:12px 10px; border-right:1px solid #d0d7de; vertical-align:middle; background:#ffffff; overflow:hidden;'>
                             <code style='{badge_style} padding:4px 6px; border-radius:4px; font-weight:bold; font-size:11px; font-family:monospace; display:inline-block; white-space:nowrap;'>{code}</code>
                         </td>
-                        <td style='width:50%; padding:12px 10px; border-right:1px solid #d0d7de; color:#24292f; font-weight:500; line-height:1.4; vertical-align:middle; background:#ffffff; word-wrap:break-word;'>
+                        <td style='width:45%; padding:12px 10px; border-right:1px solid #d0d7de; color:#24292f; font-weight:bold; line-height:1.4; vertical-align:middle; background:#ffffff; word-wrap:break-word;'>
                             {title_string}
                         </td>
-                        <td style='width:40%; padding:12px 10px; text-align:right; vertical-align:middle; background:#ffffff;'>
-                            <div style='display:flex; flex-wrap:wrap; justify-content:flex-end; gap:2px;'>{rule_badges}</div>
+                        <td style='width:40%; padding:12px 10px; text-align:right; vertical-align:middle; background:#ffffff; word-wrap:break-word;'>
+                            {rule_badges}
                         </td>
                     </tr>"""
         human_cwe_html_list += "</tbody></table></div>"
     else:
         human_cwe_html_list = "<div style='font-size:12px; color:#57606a;'>No CWE mappings registered.</div>"
+
     # --- COMPILE HTML GRID TEMPLATE ---
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -346,6 +347,7 @@ def main():
                 {ai_cwe_html_list}
             </div>
         </div>
+        
         <!-- 👨‍💻 Human Pull Requests Card -->
         <div class="card human-card">
             <h3>👨‍💻 Human Pull Requests</h3>
@@ -391,7 +393,6 @@ def main():
             </div>
         </div>
     </div>
-
 </body>
 </html>
 """
